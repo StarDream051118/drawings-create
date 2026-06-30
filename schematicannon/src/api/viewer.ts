@@ -25,6 +25,8 @@ export type ViewerState = {
   yaw: number;
   pitch: number;
   pendingFrame: number;
+  showGrid: boolean;
+  animateKinetics: boolean;
 };
 
 export function uploadMeshBuffers (gl: WebGLRenderingContext, mesh: Mesh) {
@@ -129,13 +131,59 @@ export function createStructureViewer (options: ViewerOptions) {
     structure: null,
     center: [8, 8, 8],
     distance: 48,
-    yaw: -Math.PI / 4,
-    pitch: -Math.PI / 6,
-    pendingFrame: 0
+    yaw: 0,
+    pitch: 0,
+    pendingFrame: 0,
+    showGrid: true,
+    animateKinetics: true
   };
+
+  // Easing targets — current values smoothly interpolate toward these
+  const target = {
+    yaw: 0,
+    pitch: 0,
+    distance: 48,
+    center: [8, 8, 8] as Vec3
+  };
+  let easingFrame = 0;
 
   const setStatus = (msg: string) => {
     observer.emit({ type: 'loading-progress', message: msg });
+  };
+
+  const requestEasing = () => {
+    if (easingFrame) return;
+    const tick = () => {
+      const rate = 0.08;
+      const dy = target.yaw - state.yaw;
+      const dp = target.pitch - state.pitch;
+      const dd = target.distance - state.distance;
+      const dc0 = target.center[0] - state.center[0];
+      const dc1 = target.center[1] - state.center[1];
+      const dc2 = target.center[2] - state.center[2];
+
+      const done = Math.abs(dy) < 0.0005 && Math.abs(dp) < 0.0005 &&
+                   Math.abs(dd) < 0.01 && Math.abs(dc0) < 0.005 &&
+                   Math.abs(dc1) < 0.005 && Math.abs(dc2) < 0.005;
+      if (done) {
+        state.yaw = target.yaw;
+        state.pitch = target.pitch;
+        state.distance = target.distance;
+        state.center = [...target.center];
+        easingFrame = 0;
+        requestRender();
+        return;
+      }
+      state.yaw += dy * rate;
+      state.pitch += dp * rate;
+      state.distance += dd * rate;
+      state.center[0] += dc0 * rate;
+      state.center[1] += dc1 * rate;
+      state.center[2] += dc2 * rate;
+      requestRender();
+      easingFrame = requestAnimationFrame(tick);
+    };
+    easingFrame = requestAnimationFrame(tick);
   };
 
   const buildView = () => {
@@ -161,11 +209,11 @@ export function createStructureViewer (options: ViewerOptions) {
     mat4.perspective(proj, glMatrix.toRadian(70), aspect, 0.1, 500);
 
     for (const v of state.visuals) {
-      v.update(1);
+      if (state.animateKinetics) v.update(1);
       v.beginFrame({ instancerProvider: () => state.flywheel!, partialTick: () => 0 });
     }
 
-    state.renderer.drawGrid(view);
+    if (state.showGrid) state.renderer.drawGrid(view);
     state.renderer.drawStructure(view);
     state.flywheel.render(view, proj);
   };
@@ -188,8 +236,16 @@ export function createStructureViewer (options: ViewerOptions) {
 
   const resetCamera = (structure: Structure) => {
     const size = structure.getSize();
-    state.center = [size[0] / 2, size[1] / 2, size[2] / 2];
-    state.distance = Math.max(12, Math.max(...size) * 1.5);
+    target.center = [size[0] / 2, size[1] / 2, size[2] / 2];
+    target.distance = Math.max(12, Math.max(...size) * 1.5);
+    target.yaw = 0.45;
+    target.pitch = 0.45;
+    // Snap to origin then ease to target
+    state.yaw = 0;
+    state.pitch = 0;
+    state.center = [...target.center];
+    state.distance = target.distance;
+    requestEasing();
   };
 
   if (options.enableResize ?? true) {
@@ -219,17 +275,17 @@ export function createStructureViewer (options: ViewerOptions) {
       }
       const dx = e.clientX - lastX;
       const dy = e.clientY - lastY;
-      state.yaw += dx * 0.005;
-      state.pitch = Math.max(-1.4, Math.min(1.4, state.pitch + (dy * 0.005)));
+      target.yaw += dx * 0.005;
+      target.pitch = Math.max(-1.4, Math.min(1.4, target.pitch + (dy * 0.005)));
       lastX = e.clientX;
       lastY = e.clientY;
-      requestRender();
+      requestEasing();
     });
 
     canvas.addEventListener('wheel', e => {
       e.preventDefault();
-      state.distance = Math.max(6, state.distance * (1 + (e.deltaY * 0.001)));
-      requestRender();
+      target.distance = Math.max(6, target.distance * (1 + (e.deltaY * 0.001)));
+      requestEasing();
     }, { passive: false });
   }
 
@@ -309,6 +365,14 @@ export function createStructureViewer (options: ViewerOptions) {
     loadStructure,
     requestRender,
     setStatus,
+    setShowGrid: (show: boolean) => {
+      state.showGrid = show;
+      requestRender();
+    },
+    setAnimateKinetics: (animate: boolean) => {
+      state.animateKinetics = animate;
+      if (animate) requestRender();
+    },
     dispose: () => {
       state.visuals = [];
       state.renderer = null;

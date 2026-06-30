@@ -219,6 +219,9 @@ export async function loadResourcesForStructure (structure: Structure, options: 
 
   const blockModels: Record<string, BlockModel> = {};
   Object.keys(vanilla.blockModels).forEach(id => {
+    // Only load block/ models — item/ models use builtin/entity parents
+    // that don't exist in the block model dictionary (they're entity-rendered items)
+    if (!id.startsWith('block/')) return;
     const modelId = Identifier.parse('minecraft:' + id);
     const model = vanilla.blockModels[id];
     if (model) {

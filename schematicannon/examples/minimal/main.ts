@@ -21,8 +21,10 @@ const fileInput = document.getElementById('nbt-input') as HTMLInputElement;
 const statusEl = document.getElementById('status') as HTMLElement;
 const createSelect = document.getElementById('create-select') as HTMLSelectElement;
 const mcSelect = document.getElementById('minecraft-select') as HTMLSelectElement;
+const showGridCheckbox = document.getElementById('show-grid') as HTMLInputElement;
+const animateKineticsCheckbox = document.getElementById('animate-kinetics') as HTMLInputElement;
 
-log(`DOM elements: canvas=${!!canvas} fileInput=${!!fileInput} statusEl=${!!statusEl} createSelect=${!!createSelect} mcSelect=${!!mcSelect}`);
+log(`DOM elements: canvas=${!!canvas} fileInput=${!!fileInput} statusEl=${!!statusEl} createSelect=${!!createSelect} mcSelect=${!!mcSelect} showGrid=${!!showGridCheckbox} kinetics=${!!animateKineticsCheckbox}`);
 
 if (!canvas) {
   log('Canvas element #viewport not found', 'error');
@@ -172,6 +174,13 @@ if (!canvas) {
     if (e?.stack) log(`Stack: ${e.stack}`, 'error');
     statusEl.textContent = 'Failed to load supported versions.';
   }
+
+  showGridCheckbox.addEventListener('change', () => {
+    if (viewer) viewer.setShowGrid(showGridCheckbox.checked);
+  });
+  animateKineticsCheckbox.addEventListener('change', () => {
+    if (viewer) viewer.setAnimateKinetics(animateKineticsCheckbox.checked);
+  });
 
   fileInput.addEventListener('change', async () => {
     const file = fileInput.files?.[0];

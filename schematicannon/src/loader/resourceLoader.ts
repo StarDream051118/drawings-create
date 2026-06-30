@@ -116,6 +116,7 @@ export async function createResources (assets: Assets): Promise<Resources & Item
 
   const blockModels: Record<string, BlockModel> = {};
   Object.keys(models).forEach(id => {
+    if (!id.startsWith('block/')) return;
     blockModels['minecraft:' + id] = BlockModel.fromJson(models[id]);
   });
   Object.values(blockModels).forEach(m => m.flatten({ getBlockModel: id => blockModels[id.toString()] || null }));
