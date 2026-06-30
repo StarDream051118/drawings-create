@@ -1,0 +1,59 @@
+{
+  "name": "schematicannon",
+  "version": "0.1.2",
+  "description": "Library for rendering Create mod schematics in the browser",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "schematicannon": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "lint": "eslint .",
+    "lint/tsc": "tsc --noEmit",
+    "examples/deepslate": "vite examples/deepslate",
+    "examples/minimal": "vite examples/minimal",
+    "generate-assets": "node dist/cli.js generate-assets"
+  },
+  "dependencies": {
+    "commander": "^14.0.2",
+    "deepslate": "0.25.1",
+    "gl-matrix": "3.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "@stylistic/eslint-plugin": "^5.7.1",
+    "@types/node": "22.15.1",
+    "eslint": "^9.34.0",
+    "eslint-plugin-unicorn": "^62.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.53.1",
+    "vite": "^6.3.5",
+    "vite-plugin-dts": "^4.5.4",
+    "vite-tsconfig-paths": "^5.1.4"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [],
+  "author": "Slipn3r",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Slipn3r/schematicannon"
+  },
+  "license": "MIT",
+  "packageManager": "pnpm@10.28.0"
+}

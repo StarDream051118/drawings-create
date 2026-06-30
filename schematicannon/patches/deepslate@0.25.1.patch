@@ -1,0 +1,100 @@
+diff --git a/lib/render/BlockDefinition.d.ts b/lib/render/BlockDefinition.d.ts
+index af53b35fc98ef5a2afb2ffe0cd5045c3b6bc09df..b94813c43910f80ac55b0341d19e90ec37e3d593 100644
+--- a/lib/render/BlockDefinition.d.ts
++++ b/lib/render/BlockDefinition.d.ts
+@@ -26,8 +26,10 @@ export interface BlockDefinitionProvider {
+     getBlockDefinition(id: Identifier): BlockDefinition | null;
+ }
+ export declare class BlockDefinition {
+-    private readonly variants;
+-    private readonly multipart;
++   readonly variants: {
++       [key: string]: ModelVariantEntry;
++   } | undefined;
++   readonly multipart: ModelMultiPart[] | undefined;
+     constructor(variants: {
+         [key: string]: ModelVariantEntry;
+     } | undefined, multipart: ModelMultiPart[] | undefined);
+diff --git a/lib/render/BlockModel.d.ts b/lib/render/BlockModel.d.ts
+index 7d06a56dcc5a8b1238071f190a4193dd89eb947e..402c1b1290552154bc544e556cf028148adb3c47 100644
+--- a/lib/render/BlockModel.d.ts
++++ b/lib/render/BlockModel.d.ts
+@@ -39,11 +39,11 @@ export interface BlockModelProvider {
+     getBlockModel(id: Identifier): BlockModel | null;
+ }
+ export declare class BlockModel {
+-    private parent;
+-    private textures;
+-    private elements;
+-    private display?;
+-    private guiLight?;
++    parent: Identifier;
++    textures: { [key: string]: string };
++    elements: BlockModelElement[];
++    display?: BlockModelDisplay;
++    guiLight?: BlockModelGuiLight;
+     private static readonly BUILTIN_GENERATED;
+     private static readonly GENERATED_LAYERS;
+     private generationMarker;
+@@ -53,7 +53,7 @@ export declare class BlockModel {
+     getDisplayTransform(display: Display): mat4;
+     getMesh(atlas: TextureAtlasProvider, cull: Cull, tint?: Color | ((index: number) => Color)): Mesh;
+     getElementMesh(e: BlockModelElement, atlas: TextureAtlasProvider, cull: Cull, getTint: (index?: number) => Color): Mesh;
+-    private getTexture;
++    protected getTexture(textureRef: string): Identifier;
+     flatten(accessor: BlockModelProvider): void;
+     private getParent;
+     static fromJson(data: any): BlockModel;
+diff --git a/lib/render/BlockModel.js b/lib/render/BlockModel.js
+index 240a2a2fca7efe65616fbc74f19a58939b8e06df..ac8f1f5ec107808bcb6200e563a218c51dccbaed 100644
+--- a/lib/render/BlockModel.js
++++ b/lib/render/BlockModel.js
+@@ -3,6 +3,7 @@ import { Identifier } from '../core/index.js';
+ import { Vector } from '../math/index.js';
+ import { Mesh } from './Mesh.js';
+ import { Quad } from './Quad.js';
++import { Vertex } from './Vertex.js';
+ const faceRotations = {
+     0: [0, 3, 2, 3, 2, 1, 0, 1],
+     90: [2, 3, 2, 1, 0, 1, 0, 3],
+@@ -71,6 +72,27 @@ export class BlockModel {
+         return mesh;
+     }
+     getElementMesh(e, atlas, cull, getTint) {
++        if (e.mesh && e.texture) {
++            const texture = this.getTexture(e.texture);
++            const [u0, v0, u1, v1] = atlas.getTextureUV(texture);
++            const du = u1 - u0;
++            const dv = v1 - v0;
++            const mesh = new Mesh();
++            const cloneVertex = (v) => {
++                return new Vertex(new Vector(v.pos.x, v.pos.y, v.pos.z), [...v.color], v.texture ? [...v.texture] : undefined, v.textureLimit ? [...v.textureLimit] : undefined, v.normal ? new Vector(v.normal.x, v.normal.y, v.normal.z) : undefined, v.blockPos ? new Vector(v.blockPos.x, v.blockPos.y, v.blockPos.z) : undefined);
++            };
++            for (const q of e.mesh.quads) {
++                const newQ = new Quad(cloneVertex(q.v1), cloneVertex(q.v2), cloneVertex(q.v3), cloneVertex(q.v4));
++                newQ.forEach(v => {
++                    if (v.texture) {
++                        v.texture[0] = u0 + v.texture[0] * du;
++                        v.texture[1] = v0 + v.texture[1] * dv;
++                    }
++                });
++                mesh.quads.push(newQ);
++            }
++            return mesh;
++        }
+         const mesh = new Mesh();
+         const [x0, y0, z0] = e.from;
+         const [x1, y1, z1] = e.to;
+diff --git a/lib/render/StructureRenderer.d.ts b/lib/render/StructureRenderer.d.ts
+index dce46542c3806a79e9a4d6710739fddde02e4529..c47f580a1e570437ead2530c200a6ef038e1e4f8 100644
+--- a/lib/render/StructureRenderer.d.ts
++++ b/lib/render/StructureRenderer.d.ts
+@@ -32,7 +32,7 @@ export declare class StructureRenderer extends Renderer {
+     private gridMesh;
+     private readonly outlineMesh;
+     private invisibleBlocksMesh;
+-    private readonly atlasTexture;
++    readonly atlasTexture?: WebGLTexture;
+     useInvisibleBlocks: boolean;
+     private readonly chunkBuilder;
+     constructor(gl: WebGLRenderingContext, structure: StructureProvider, resources: Resources, options?: StructureRendererOptions);

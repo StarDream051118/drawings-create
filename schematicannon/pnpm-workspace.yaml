@@ -1,0 +1,5 @@
+ignoredBuiltDependencies:
+  - esbuild
+
+patchedDependencies:
+  deepslate@0.25.1: patches/deepslate@0.25.1.patch
