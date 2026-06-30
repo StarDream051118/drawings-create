@@ -133,6 +133,9 @@ if (!canvas) {
       option.textContent = `Create ${c.version}`;
       createSelect.appendChild(option);
     });
+    if (Array.from(createSelect.options).some(o => o.value === '6.0.9')) {
+      createSelect.value = '6.0.9';
+    }
     log(`Create select populated: ${createSelect.options.length} options, selected: "${createSelect.value}"`);
 
     const updateMcSelect = async () => {

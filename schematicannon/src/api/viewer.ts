@@ -295,7 +295,7 @@ export function createStructureViewer (options: ViewerOptions) {
     setStatus(`Loading ${name}...`);
     try {
       const nbt = isFile ? await input.arrayBuffer() : input;
-      const structure = await loadStructureFromNbt(nbt);
+      const structure = await loadStructureFromNbt(nbt, name);
       setStatus('Fetching assets...');
 
       const vanillaProvider = typeof options.vanillaAssetsBase === 'string'

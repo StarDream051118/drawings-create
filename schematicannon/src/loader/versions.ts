@@ -32,7 +32,7 @@ export function mapSupportedVersions (modrinthVersions: ModrinthCreateVersion[])
   const createVersions = new Set<string>();
   const minecraftVersions = new Set<string>();
 
-  for (const version of modrinthVersions) {
+  for (let version of modrinthVersions) {
     const versionNum = version.version_number;
     let createVersion: string;
     if (versionNum.includes('+mc')) {

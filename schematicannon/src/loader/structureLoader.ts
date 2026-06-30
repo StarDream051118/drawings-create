@@ -1,6 +1,7 @@
 import type { Resources, ItemRendererResources } from 'deepslate';
-import { NbtFile, Structure, StructureRenderer } from 'deepslate';
+import { Structure, StructureRenderer } from 'deepslate';
 import { InteractiveCanvas } from './interactiveCanvas';
+import { loadStructureFromNbt } from '../api/nbt.js';
 
 export class LimestoneLoader {
   private activeRenderer: StructureRenderer | null = null;
@@ -24,8 +25,7 @@ export class LimestoneLoader {
     const arrayBuffer = await file.arrayBuffer();
 
     onProgress?.('Parsing NBT...');
-    const nbtFile = NbtFile.read(new Uint8Array(arrayBuffer));
-    const structure = Structure.fromNbt(nbtFile.root);
+    const structure = await loadStructureFromNbt(arrayBuffer, file.name);
 
     onProgress?.('Rendering structure...');
     await this.renderStructure(structure);
