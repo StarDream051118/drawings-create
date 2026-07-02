@@ -13,8 +13,15 @@ export interface LoadedAssets {
   textures: Record<string, Blob>;
 }
 
+export interface AddonProvider {
+  namespace: string;
+  provider: ResourceProvider;
+  modelManifest?: Iterable<string>;
+}
+
 export interface CreateModLoaderOptions {
   assetsProvider?: ResourceProvider;
+  addonProviders?: AddonProvider[];
   enableAutoSubparts?: boolean;
   modelManifest?: Iterable<string>;
 }
@@ -26,6 +33,7 @@ export class CreateModLoader {
   private readonly enableAutoSubparts: boolean;
   private readonly autoSubpartLog: Array<{ blockId: string; baseModel: string; subpart: string; when: ModelMultiPartCondition | undefined }> = [];
   private readonly provider: ResourceProvider;
+  private readonly providerMap = new Map<string, ResourceProvider>();
   private readonly modelManifest: Set<string>;
 
   // Cache to prevent duplicate fetches
@@ -39,6 +47,22 @@ export class CreateModLoader {
     this.enableAutoSubparts = options.enableAutoSubparts ?? paramFlag !== '0';
     this.provider = options.assetsProvider ?? new FetchResourceProvider('./assets/create/0.5.1/');
     this.modelManifest = new Set(options.modelManifest ?? []);
+
+    this.providerMap.set('create', this.provider);
+    if (options.addonProviders) {
+      for (const addon of options.addonProviders) {
+        this.providerMap.set(addon.namespace, addon.provider);
+        if (addon.modelManifest) {
+          for (const m of addon.modelManifest) {
+            this.modelManifest.add(m);
+          }
+        }
+      }
+    }
+  }
+
+  private getProvider (namespace: string): ResourceProvider | null {
+    return this.providerMap.get(namespace) ?? null;
   }
 
   private rotateElementsX90 (elements: RawModelElement[]): RawModelElement[] {
@@ -50,48 +74,53 @@ export class CreateModLoader {
   }
 
   async loadBlocks (blockIds: Set<string>): Promise<LoadedAssets> {
-    console.log(`Loading assets for ${blockIds.size} Create blocks...`);
+    console.log(`Loading assets for ${blockIds.size} blocks...`);
 
     const definitions: Record<string, BlockDefinition> = {};
     const models: Record<string, BlockModel> = {};
     const textures: Record<string, Blob> = {};
 
     for (const id of blockIds) {
-      if (!id.startsWith('create:')) {
+      const ns = id.includes(':') ? id.split(':')[0]! : 'minecraft';
+      const nsProvider = this.getProvider(ns);
+      if (!nsProvider) {
         continue;
       }
+      const isCreate = ns === 'create';
 
       try {
         // 1. Fetch Block Definition (BlockState)
-        const defJson = await this.fetchJson(`blockstates/${id.replace('create:', '')}.json`) as RawBlockState;
+        const defJson = await this.fetchJsonNs(ns, `blockstates/${id.replace(`${ns}:`, '')}.json`) as RawBlockState;
 
         if (defJson) {
-          if (id === 'create:mechanical_crafter') {
-            await this.injectMechanicalCrafterGears(defJson);
-          } else if (id === 'create:mechanical_arm') {
-            await this.injectMechanicalArmCog(defJson);
-          }
-          if (id === 'create:spout') {
-            await this.ensureSpoutNozzles();
-          }
-          // Apply procedural patches to definitions first
-          if (id === 'create:belt') {
-            this.patchBeltDefinition(defJson);
-          } else if (id === 'create:encased_fluid_pipe') {
-            this.patchEncasedPipeDefinition(defJson);
-          } else if (id === 'create:fluid_pipe') {
-            this.patchFluidPipeConnectionRules(defJson);
-          } else if (id.includes('encased_cogwheel') || id.includes('encased_shaft')) {
-            this.patchEncasedCogDefinition(defJson, id);
-          }
+          if (isCreate) {
+            if (id === 'create:mechanical_crafter') {
+              await this.injectMechanicalCrafterGears(defJson);
+            } else if (id === 'create:mechanical_arm') {
+              await this.injectMechanicalArmCog(defJson);
+            }
+            if (id === 'create:spout') {
+              await this.ensureSpoutNozzles();
+            }
+            // Apply procedural patches to definitions first
+            if (id === 'create:belt') {
+              this.patchBeltDefinition(defJson);
+            } else if (id === 'create:encased_fluid_pipe') {
+              this.patchEncasedPipeDefinition(defJson);
+            } else if (id === 'create:fluid_pipe') {
+              this.patchFluidPipeConnectionRules(defJson);
+            } else if (id.includes('encased_cogwheel') || id.includes('encased_large_cogwheel') || id.includes('encased_shaft')) {
+              this.patchEncasedCogDefinition(defJson, id);
+            }
 
-          // Auto subparts mutate the blockstate; run them before freezing into BlockDefinition.
-          if (id.includes('mechanical_mixer')) {
-            await this.loadModelRecursive('create:block/cogwheel_shaftless');
-          }
-          if (this.enableAutoSubparts) {
-            await this.preloadSubpartModels(this.extractModelsFromDefinition(defJson));
-            this.autoAttachSubparts(defJson, id);
+            // Auto subparts mutate the blockstate; run them before freezing into BlockDefinition.
+            if (id.includes('mechanical_mixer')) {
+              await this.loadModelRecursive('create:block/cogwheel_shaftless');
+            }
+            if (this.enableAutoSubparts) {
+              await this.preloadSubpartModels(this.extractModelsFromDefinition(defJson));
+              this.autoAttachSubparts(defJson, id);
+            }
           }
 
           definitions[id] = BlockDefinition.fromJson(defJson);
@@ -104,17 +133,19 @@ export class CreateModLoader {
           }
 
           // Extra Models: Ensure implicit dependencies for patched blocks are loaded
-          const extraModels: string[] = [];
-          if (id.includes('encased_cogwheel')) {
-            extraModels.push('create:block/cogwheel_shaftless');
-            extraModels.push('create:block/large_cogwheel_shaftless');
-          }
-          if (id.includes('encased_shaft')) {
-            extraModels.push('create:block/shaft');
-          }
+          if (isCreate) {
+            const extraModels: string[] = [];
+            if (id.includes('encased_cogwheel') || id.includes('encased_large_cogwheel')) {
+              extraModels.push('create:block/cogwheel_shaftless');
+              extraModels.push('create:block/large_cogwheel_shaftless');
+            }
+            if (id.includes('encased_shaft')) {
+              extraModels.push('create:block/shaft');
+            }
 
-          for (const m of extraModels) {
-            await this.loadModelRecursive(m);
+            for (const m of extraModels) {
+              await this.loadModelRecursive(m);
+            }
           }
 
         } else {
@@ -602,7 +633,7 @@ export class CreateModLoader {
     }
 
     // Case 1: Encased Cogwheel
-    if (id.includes('encased_cogwheel')) {
+    if (id.includes('encased_cogwheel') || id.includes('encased_large_cogwheel')) {
       const isLarge = id.includes('large');
       const cogModel = isLarge ? 'create:block/large_cogwheel_shaftless' : 'create:block/cogwheel_shaftless';
 
@@ -1023,13 +1054,15 @@ export class CreateModLoader {
     }
     this.visitedModels.add(cleanPath);
 
-    if (!cleanPath.startsWith('create:')) {
-      // It's likely a vanilla model (e.g. minecraft:block/cube_all), skip it as we don't fetch vanilla here.
+    const ns = cleanPath.includes(':') ? cleanPath.split(':')[0]! : 'minecraft';
+    const nsProvider = this.getProvider(ns);
+    if (!nsProvider) {
       return;
     }
+    const isCreate = ns === 'create';
 
-    const relativePath = cleanPath.replace('create:', '');
-    const modelJson = await this.fetchJson(`models/${relativePath}.json`) as RawBlockModel | undefined;
+    const relativePath = cleanPath.replace(`${ns}:`, '');
+    const modelJson = await this.fetchJsonNs(ns, `models/${relativePath}.json`) as RawBlockModel | undefined;
     if (modelJson) {
       if (modelJson.parent) {
         await this.loadModelRecursive(modelJson.parent);
@@ -1044,10 +1077,9 @@ export class CreateModLoader {
             objPath += '.obj';
           }
 
-          // "create:block/crushing_wheel/crushing_wheel.obj"
-          const relativeRef = objPath.replace(/^create:/, '');
+          const relativeRef = objPath.replace(/^create:/, '').replace(new RegExp(`^${ns}:`), '');
           const cleanRelPath = relativeRef.startsWith('models/') ? relativeRef.substring(7) : relativeRef;
-          const objText = await this.fetchText(`models/${cleanRelPath}`);
+          const objText = await this.fetchTextNs(ns, `models/${cleanRelPath}`);
 
           if (objText) {
             const parts = parseObj(objText);
@@ -1061,7 +1093,7 @@ export class CreateModLoader {
             const availableTextures = collectTextures(modelJson);
 
             // 1. CRUSHING WHEEL
-            if (cleanPath.includes('crushing_wheel')) {
+            if (isCreate && cleanPath.includes('crushing_wheel')) {
               const materialMap: Record<string, string> = {
                 crushing_wheel_insert: 'insert',
                 crushing_wheel_plates: 'plates',
@@ -1078,7 +1110,7 @@ export class CreateModLoader {
             }
 
             // 2. MECHANICAL ROLLER
-            if (cleanPath.includes('mechanical_roller')) {
+            if (isCreate && cleanPath.includes('mechanical_roller')) {
               const materialMap: Record<string, string> = {
                 roller_wheel: 'wheel'
               };
@@ -1091,7 +1123,7 @@ export class CreateModLoader {
             }
 
             // 3. CHAIN CONVEYOR
-            if (cleanPath.includes('chain_conveyor')) {
+            if (isCreate && cleanPath.includes('chain_conveyor')) {
               const materialMap: Record<string, string> = {
                 casing: 'conveyor_casing',
                 bullwheel: 'bullwheel',
@@ -1108,7 +1140,7 @@ export class CreateModLoader {
             }
 
             // 4. WATER WHEEL (and LARGE)
-            if (cleanPath.includes('water_wheel') || cleanPath.includes('large_water_wheel')) {
+            if (isCreate && (cleanPath.includes('water_wheel') || cleanPath.includes('large_water_wheel'))) {
               const materialMap: Record<string, string> = {
                 waterwheel_log: 'log', // or check availableTextures
                 waterwheel_plank: 'planks',
@@ -1126,7 +1158,7 @@ export class CreateModLoader {
             }
 
             // 4. VALVE HANDLE
-            if (cleanPath.includes('valve_handle')) {
+            if (isCreate && cleanPath.includes('valve_handle')) {
               const materialMap: Record<string, string> = {
                 Material: '3'
               };
@@ -1204,11 +1236,13 @@ export class CreateModLoader {
       this.flattenCompositeChildren(modelJson);
 
       // 2. Apply geometry patches after parent load
-      this.patchFunnelFlap(modelJson, cleanPath);
-      this.patchTunnelFlaps(modelJson, cleanPath);
-      await this.patchKineticPoses(modelJson, cleanPath);
-      this.patchMechanicalRoller(modelJson, cleanPath);
-      await this.ensureFactoryGaugeGeometry(modelJson, cleanPath);
+      if (isCreate) {
+        this.patchFunnelFlap(modelJson, cleanPath);
+        this.patchTunnelFlaps(modelJson, cleanPath);
+        await this.patchKineticPoses(modelJson, cleanPath);
+        this.patchMechanicalRoller(modelJson, cleanPath);
+        await this.ensureFactoryGaugeGeometry(modelJson, cleanPath);
+      }
 
       this.fetchedBlockModels.set(cleanPath, modelJson);
 
@@ -1246,7 +1280,7 @@ export class CreateModLoader {
       // Try a generic fallback: if a smart_* model is missing, reuse the base model without the smart_ prefix.
       if (cleanPath.includes('smart_')) {
         const fallbackPath = cleanPath.replace('smart_', '');
-        const fallbackJson = await this.fetchJson<RawBlockModel>(`models/${fallbackPath.replace('create:', '')}.json`);
+        const fallbackJson = await this.fetchJsonNs<RawBlockModel>(ns, `models/${fallbackPath.replace(`${ns}:`, '')}.json`);
         if (fallbackJson) {
           console.warn(`[CreateModLoader] Missing ${cleanPath}, using fallback ${fallbackPath}`);
           this.flattenCompositeChildren(fallbackJson);
@@ -1670,9 +1704,9 @@ export class CreateModLoader {
 
   private async loadTexture (texturePath: string) {
     const cleanPath = this.normalizePath(texturePath);
-    // cleanPath e.g. "create:block/axis"
 
-    if (!cleanPath.startsWith('create:')) {
+    const ns = cleanPath.includes(':') ? cleanPath.split(':')[0]! : 'minecraft';
+    if (!this.getProvider(ns)) {
       return;
     }
 
@@ -1680,10 +1714,10 @@ export class CreateModLoader {
       return;
     }
 
-    const relativePath = cleanPath.replace('create:', '');
+    const relativePath = cleanPath.replace(`${ns}:`, '');
 
     try {
-      const blob = await this.fetchBlob(`textures/${relativePath}.png`);
+      const blob = await this.fetchBlobNs(ns, `textures/${relativePath}.png`);
       if (blob) {
         this.fetchedTextures.set(cleanPath, blob);
         await this.loadFlowTextureForFluid(cleanPath);
@@ -1751,30 +1785,33 @@ export class CreateModLoader {
     return path;
   }
 
-  private async fetchJson<T = unknown> (path: string): Promise<T | null> {
+  private async fetchJsonNs<T = unknown> (namespace: string, path: string): Promise<T | null> {
+    const nsProvider = this.getProvider(namespace) ?? this.provider;
     try {
-      return await this.provider.getJson(path) as T;
+      return await nsProvider.getJson(path) as T;
     } catch (e) {
-      console.error(`Provider error for ${path}`, e);
+      console.error(`Provider error for ${namespace}:${path}`, e);
       return null;
     }
   }
 
-  private async fetchText (path: string): Promise<string | null> {
+  private async fetchTextNs (namespace: string, path: string): Promise<string | null> {
+    const nsProvider = this.getProvider(namespace) ?? this.provider;
     try {
-      return await this.provider.getText(path);
+      return await nsProvider.getText(path);
     } catch (e) {
-      console.error(`Provider error for ${path}`, e);
+      console.error(`Provider error for ${namespace}:${path}`, e);
       return null;
     }
   }
 
-  private async fetchBlob (path: string): Promise<Blob | null> {
+  private async fetchBlobNs (namespace: string, path: string): Promise<Blob | null> {
+    const nsProvider = this.getProvider(namespace) ?? this.provider;
     try {
-      const buffer = await this.provider.getArrayBuffer(path);
+      const buffer = await nsProvider.getArrayBuffer(path);
       return new Blob([buffer]);
     } catch (e) {
-      console.error(`Provider error for ${path}`, e);
+      console.error(`Provider error for ${namespace}:${path}`, e);
       return null;
     }
   }

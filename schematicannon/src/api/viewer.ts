@@ -5,7 +5,7 @@ import { StaticVisual } from '../flywheel/lib/visual/staticVisual';
 import type { Structure } from 'deepslate';
 import type { BlockPos } from 'deepslate/core';
 import { StructureRenderer } from 'deepslate/render';
-import { loadResourcesForStructure, type ResourceBundle } from './resources';
+import { loadResourcesForStructure, type ResourceBundle, type AddonProvider } from './resources';
 import { loadStructureFromNbt } from './nbt';
 import type { Mesh } from 'deepslate/render';
 import type { Vertex } from 'deepslate/render';
@@ -13,6 +13,7 @@ import { buildRenderPlan, type PlanBuilder } from './renderPlan.js';
 import { LimestoneObserver } from './events.js';
 import { ResourceProvider, FetchResourceProvider } from '../loader/resourceProvider.js';
 
+export type { AddonProvider };
 export type Vec3 = [number, number, number];
 
 export type ViewerState = {
@@ -111,6 +112,7 @@ export type ViewerOptions = {
   enableMouseControls?: boolean;
   createAssetsBase?: string | ResourceProvider;
   vanillaAssetsBase?: string | ResourceProvider;
+  addons?: AddonProvider[];
   observer?: LimestoneObserver;
 };
 
@@ -308,7 +310,8 @@ export function createStructureViewer (options: ViewerOptions) {
 
       const resourcesBundle: ResourceBundle = await loadResourcesForStructure(structure, {
         createAssetsBase: assetsProvider.getBasePath(),
-        vanillaAssetsBase: vanillaProvider.getBasePath()
+        vanillaAssetsBase: vanillaProvider.getBasePath(),
+        addons: options.addons
       });
 
       const renderPlan = planBuilder(structure.getBlocks(), resourcesBundle.resources, mesh => uploadMeshBuffers(gl, mesh));

@@ -74,11 +74,18 @@ if (!canvas) {
     const vanillaAssets = new FetchResourceProvider(vanillaAssetsPath);
 
     try {
+      const aeronauticsAssets = new FetchResourceProvider('assets/aeronautics/');
+      const simulatedAssets = new FetchResourceProvider('assets/simulated/');
+
       log('Calling createStructureViewer...');
       viewer = createStructureViewer({
         canvas,
         createAssetsBase: createAssets,
         vanillaAssetsBase: vanillaAssets,
+        addons: [
+          { namespace: 'aeronautics', provider: aeronauticsAssets },
+          { namespace: 'simulated', provider: simulatedAssets }
+        ],
         enableResize: true,
         enableMouseControls: true
       });

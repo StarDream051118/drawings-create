@@ -2,10 +2,12 @@ import { BlockDefinition, BlockModel, Identifier, type Resources } from 'deepsla
 import { describeBlockDefinition, createBlockModelFromJson, ModelMultiPartCondition } from './deepslateExtensions.js';
 import { mergeAtlases } from './atlasMerger.js';
 import type { Structure, TextureAtlas } from 'deepslate';
-import { CreateModLoader, type CreateModLoaderOptions, type LoadedAssets } from './createLoader.js';
+import { CreateModLoader, type CreateModLoaderOptions, type AddonProvider, type LoadedAssets } from './createLoader.js';
 import { loadCreateModelManifest } from './createModelManifest.js';
 import { RawBlockState, RawBlockModel } from '../types/assets';
 import { ResourceProvider, FetchResourceProvider } from '../loader/resourceProvider.js';
+
+export type { AddonProvider };
 
 export interface VanillaAssetBundle {
   blockStates: Record<string, RawBlockState>;
@@ -17,6 +19,7 @@ export interface VanillaAssetBundle {
 export interface ResourceLoadOptions extends CreateModLoaderOptions {
   vanillaAssetsBase?: string | ResourceProvider;
   createAssetsBase?: string | ResourceProvider;
+  addons?: AddonProvider[];
   summaryBase?: string;
   atlasBase?: string;
 }
@@ -73,10 +76,20 @@ export async function loadResourcesForStructure (structure: Structure, options: 
       return undefined;
     });
 
-  const [vanilla, manifestData] = await Promise.all([vanillaPromise, manifestPromise]);
+  const addonManifestPromises = (options.addons ?? []).map(async addon => {
+    try {
+      const manifest = await loadCreateModelManifest(addon.provider);
+      return { ...addon, modelManifest: manifest ?? addon.modelManifest };
+    } catch {
+      return addon;
+    }
+  });
+
+  const [vanilla, manifestData, ...resolvedAddons] = await Promise.all([vanillaPromise, manifestPromise, ...addonManifestPromises]);
   const loader = new CreateModLoader({
     ...options,
     assetsProvider: createProvider,
+    addonProviders: resolvedAddons,
     modelManifest: manifestData ?? options.modelManifest
   });
 

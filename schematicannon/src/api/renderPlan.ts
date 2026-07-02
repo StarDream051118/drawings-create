@@ -250,6 +250,7 @@ function applyCustomTransforms (
       mesh.transform(tilt);
     }
   }
+
 }
 
 function getTint (id: string, props: Record<string, string | boolean | number | undefined>) {
