@@ -20,35 +20,19 @@ export interface ResourceLoadOptions extends CreateModLoaderOptions {
   vanillaAssetsBase?: string | ResourceProvider;
   createAssetsBase?: string | ResourceProvider;
   addons?: AddonProvider[];
-  summaryBase?: string;
-  atlasBase?: string;
 }
 
 const DEFAULT_VANILLA_BASE = './assets/minecraft/1.20.1/';
-const DEFAULT_SUMMARY_BASE = 'https://raw.githubusercontent.com/misode/mcmeta/summary/';
-const DEFAULT_ATLAS_BASE = 'https://raw.githubusercontent.com/misode/mcmeta/atlas/';
-
 export async function loadVanillaAssets (options: ResourceLoadOptions = {}): Promise<VanillaAssetBundle> {
   const provider = typeof options.vanillaAssetsBase === 'string'
     ? new FetchResourceProvider(options.vanillaAssetsBase)
     : options.vanillaAssetsBase ?? new FetchResourceProvider(DEFAULT_VANILLA_BASE);
 
-  const summaryBase = options.summaryBase ?? DEFAULT_SUMMARY_BASE;
-  const atlasBase = options.atlasBase ?? DEFAULT_ATLAS_BASE;
-
   const [blockStates, blockModels, uvMap, atlasImage] = await Promise.all([
-    provider.getJson('block_definition.json').catch(() => fetch(`${summaryBase}assets/block_definition/data.min.json`).then(r => r.json())) as Promise<Record<string, RawBlockState>>,
-    provider.getJson('model.json').catch(() => fetch(`${summaryBase}assets/model/data.min.json`).then(r => r.json())) as Promise<Record<string, RawBlockModel>>,
-    provider.getJson('atlas.json').catch(() => fetch(`${atlasBase}all/data.min.json`).then(r => r.json())) as Promise<Record<string, [number, number, number, number]>>,
-    provider.getTexture('atlas.png').catch(() => {
-      return new Promise<HTMLImageElement>((res, rej) => {
-        const image = new Image();
-        image.onload = () => res(image);
-        image.onerror = () => rej(new Error('Failed to load vanilla atlas texture'));
-        image.crossOrigin = 'Anonymous';
-        image.src = `${atlasBase}all/atlas.png`;
-      });
-    })
+    provider.getJson('block_definition.json') as Promise<Record<string, RawBlockState>>,
+    provider.getJson('model.json') as Promise<Record<string, RawBlockModel>>,
+    provider.getJson('atlas.json') as Promise<Record<string, [number, number, number, number]>>,
+    provider.getTexture('atlas.png')
   ]);
 
   return { blockStates, blockModels, uvMap, atlasImage };

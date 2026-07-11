@@ -111,8 +111,21 @@ if (!canvas) {
         log(`Loading file: ${currentFile.name} (${currentFile.size} bytes)`);
         await viewer.loadStructure(currentFile);
       } else {
-        log('No NBT file selected. Ready for input.');
-        statusEl.textContent = 'Ready. Choose an NBT file.';
+        // Auto-load default test file
+        try {
+          const res = await fetch('test.nbt');
+          if (res.ok) {
+            const buffer = await res.arrayBuffer();
+            log('Auto-loading test.nbt...');
+            await viewer.loadStructure(buffer);
+          } else {
+            log('No NBT file selected. Ready for input.');
+            statusEl.textContent = 'Ready. Choose an NBT file.';
+          }
+        } catch {
+          log('No NBT file selected. Ready for input.');
+          statusEl.textContent = 'Ready. Choose an NBT file.';
+        }
       }
     } catch (e: any) {
       log(`Viewer creation failed: ${e?.message ?? e}`, 'error');

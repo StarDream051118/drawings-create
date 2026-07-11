@@ -142,6 +142,11 @@ export class CreateModLoader {
             if (id.includes('encased_shaft')) {
               extraModels.push('create:block/shaft');
             }
+            if (id.includes('steam_engine')) {
+              extraModels.push('create:block/steam_engine/shaft_connector');
+              extraModels.push('create:block/steam_engine/linkage');
+              extraModels.push('create:block/steam_engine/piston');
+            }
 
             for (const m of extraModels) {
               await this.loadModelRecursive(m);
