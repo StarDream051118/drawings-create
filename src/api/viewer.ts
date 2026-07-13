@@ -259,22 +259,68 @@ export function createStructureViewer (options: ViewerOptions) {
     let lastX = 0;
     let lastY = 0;
 
+    // Touch state for pinch-to-zoom
+    const pointers = new Map<number, { x: number; y: number }>();
+    let lastPinchDist = 0;
+
+    function getPinchDist (): number {
+      const pts = Array.from(pointers.values());
+      if (pts.length < 2) return 0;
+      const a = pts[0]!;
+      const b = pts[1]!;
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    canvas.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
+    canvas.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
     canvas.addEventListener('pointerdown', e => {
-      dragging = true;
-      lastX = e.clientX;
-      lastY = e.clientY;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size === 1) {
+        dragging = true;
+        lastX = e.clientX;
+        lastY = e.clientY;
+      }
+      if (pointers.size === 2) {
+        dragging = false;
+        lastPinchDist = getPinchDist();
+      }
       canvas.setPointerCapture(e.pointerId);
     });
 
     canvas.addEventListener('pointerup', e => {
-      dragging = false;
+      pointers.delete(e.pointerId);
+      if (pointers.size < 2) {
+        lastPinchDist = 0;
+      }
+      if (pointers.size === 0) {
+        dragging = false;
+      }
       canvas.releasePointerCapture(e.pointerId);
     });
 
     canvas.addEventListener('pointermove', e => {
-      if (!dragging) {
+      const pt = pointers.get(e.pointerId);
+      if (!pt) return;
+      pt.x = e.clientX;
+      pt.y = e.clientY;
+
+      // Pinch-to-zoom (two fingers)
+      if (pointers.size === 2) {
+        const dist = getPinchDist();
+        if (lastPinchDist > 0) {
+          const scale = lastPinchDist / dist;
+          target.distance = Math.max(6, target.distance * scale);
+          requestEasing();
+        }
+        lastPinchDist = dist;
         return;
       }
+
+      // Single finger rotation
+      if (!dragging || pointers.size !== 1) return;
       const dx = e.clientX - lastX;
       const dy = e.clientY - lastY;
       target.yaw += dx * 0.005;
@@ -294,11 +340,11 @@ export function createStructureViewer (options: ViewerOptions) {
   const loadStructure = async (input: File | ArrayBuffer) => {
     const isFile = input instanceof File;
     const name = isFile ? input.name : 'structure.nbt';
-    setStatus(`Loading ${name}...`);
+    setStatus(`加载 ${name}...`);
     try {
       const nbt = isFile ? await input.arrayBuffer() : input;
       const structure = await loadStructureFromNbt(nbt, name);
-      setStatus('Fetching assets...');
+      setStatus('获取资源...');
 
       const vanillaProvider = typeof options.vanillaAssetsBase === 'string'
         ? new FetchResourceProvider(options.vanillaAssetsBase)
@@ -349,13 +395,13 @@ export function createStructureViewer (options: ViewerOptions) {
 
       state.structure = structure;
       resetCamera(structure);
-      setStatus(`Loaded ${name}`);
+      setStatus(`加载 ${name}`);
       resize();
       observer.emit({ type: 'structure-loaded' });
     } catch (err) {
       console.error(err);
-      setStatus('Failed to load structure');
-      observer.emit({ type: 'fatal-error', message: 'Failed to load structure', error: err });
+      setStatus('加载结构失败');
+      observer.emit({ type: 'fatal-error', message: '加载结构失败', error: err });
     }
   };
 

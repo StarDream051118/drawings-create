@@ -243,6 +243,9 @@ function findNearestPoweredShaft (
   return null;
 }
 
+// Set to true to enable steam engine sub-model rendering
+const ENABLE_STEAM_ENGINE_SUBMODELS = false;
+
 export function buildRenderPlan (
   blocks: PlacedBlock[],
   resources: Resources,
@@ -334,7 +337,8 @@ export function buildRenderPlan (
     }
 
     // Steam engine: inject sub-models when powered_shaft is nearby
-    if (id.includes('steam_engine') && props) {
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    if (ENABLE_STEAM_ENGINE_SUBMODELS && id.includes('steam_engine') && props) {
       const variant: VariantLike = variants[0] ?? { model: '' };
       const shaftBlock = findNearestPoweredShaft(block.pos, blockMap);
       if (shaftBlock) {

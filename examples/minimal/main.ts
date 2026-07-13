@@ -1,8 +1,14 @@
 
 import { createStructureViewer, FetchResourceProvider, type SupportedVersions } from '../../src';
 
+const ENABLE_LOG = false;
+
 const logPanel = document.getElementById('log-panel')!;
 function log(msg: string, level: 'info' | 'warn' | 'error' = 'info') {
+  if (!ENABLE_LOG) {
+    if (level === 'error') console.error(msg);
+    return;
+  }
   const ts = new Date().toLocaleTimeString();
   const el = document.createElement('div');
   el.className = `log-${level}`;
@@ -45,7 +51,7 @@ if (!canvas) {
   const updateViewer = async () => {
     const currentCreateVersion = createSelect.value;
     const currentMcVersion = mcSelect.value;
-    log(`updateViewer called: Create="${currentCreateVersion}" MC="${currentMcVersion}"`);
+    log(`updateViewer 调用: Create="${currentCreateVersion}" MC="${currentMcVersion}"`);
 
     if (viewer) {
       log('Disposing previous viewer');
@@ -54,12 +60,12 @@ if (!canvas) {
     }
 
     if (!currentCreateVersion || !currentMcVersion) {
-      log('No version selected, skipping viewer init', 'warn');
+      log('未选择版本，跳过解析器初始化', 'warn');
       return;
     }
 
-    log(`Initializing viewer: Create ${currentCreateVersion} / MC ${currentMcVersion}`);
-    statusEl.textContent = `Initializing viewer for Create ${currentCreateVersion} / MC ${currentMcVersion}`;
+    log(`初始化解析: 机械动力 ${currentCreateVersion} / Minecraft ${currentMcVersion}`);
+    statusEl.textContent = `当前支持 机械动力 ${currentCreateVersion} / Minecraft ${currentMcVersion}`;
 
     // Strip "+mcX.Y.Z" suffix — asset directories use bare Create version numbers
     const createVersionDir = currentCreateVersion.includes('+mc')
@@ -67,8 +73,8 @@ if (!canvas) {
       : currentCreateVersion;
     const createAssetsPath = `assets/create/${createVersionDir}/`;
     const vanillaAssetsPath = `assets/minecraft/${currentMcVersion}/`;
-    log(`Create assets: ${createAssetsPath}`);
-    log(`Vanilla assets: ${vanillaAssetsPath}`);
+    log(`机械动力 资源: ${createAssetsPath}`);
+    log(`Minecraft 资源: ${vanillaAssetsPath}`);
 
     const createAssets = new FetchResourceProvider(createAssetsPath);
     const vanillaAssets = new FetchResourceProvider(vanillaAssetsPath);
@@ -77,7 +83,7 @@ if (!canvas) {
       const aeronauticsAssets = new FetchResourceProvider('assets/aeronautics/');
       const simulatedAssets = new FetchResourceProvider('assets/simulated/');
 
-      log('Calling createStructureViewer...');
+      log('调用 createStructureViewer...');
       viewer = createStructureViewer({
         canvas,
         createAssetsBase: createAssets,
@@ -89,7 +95,7 @@ if (!canvas) {
         enableResize: true,
         enableMouseControls: true
       });
-      log('createStructureViewer returned, viewer=' + (viewer ? 'OK' : 'null'));
+      log('createStructureViewer 返回, viewer=' + (viewer ? 'OK' : 'null'));
 
       viewer.observer.subscribe(event => {
         if (event.type === 'loading-progress') {
@@ -101,7 +107,7 @@ if (!canvas) {
           statusEl.textContent = 'Error: ' + event.message;
         } else if (event.type === 'structure-loaded') {
           log('Structure loaded and rendering!');
-          statusEl.textContent = 'Structure loaded successfully!';
+          statusEl.textContent = '结构加载完成!';
         } else {
           log(`[event] ${event.type}`);
         }
@@ -112,7 +118,7 @@ if (!canvas) {
         await viewer.loadStructure(currentFile);
       } else {
         // Auto-load default test file
-        try {
+/*         try {
           const res = await fetch('test.nbt');
           if (res.ok) {
             const buffer = await res.arrayBuffer();
@@ -125,7 +131,7 @@ if (!canvas) {
         } catch {
           log('No NBT file selected. Ready for input.');
           statusEl.textContent = 'Ready. Choose an NBT file.';
-        }
+        } */
       }
     } catch (e: any) {
       log(`Viewer creation failed: ${e?.message ?? e}`, 'error');
@@ -136,16 +142,16 @@ if (!canvas) {
   };
 
   try {
-    log('Fetching supportedVersions.json...');
+    log('获取支持版本...');
     const supportedVersionsResponse = await fetch('assets/supportedVersions.json');
-    log(`Fetch response status: ${supportedVersionsResponse.status}`);
+    log(`获取响应状态: ${supportedVersionsResponse.status}`);
     if (!supportedVersionsResponse.ok) {
-      log(`supportedVersions.json fetch failed: ${supportedVersionsResponse.status}`, 'error');
-      statusEl.textContent = 'Failed to load supported versions.';
-      throw new Error('Failed to load supported versions');
+      log(`支持版本获取失败: ${supportedVersionsResponse.status}`, 'error');
+      statusEl.textContent = '无法加载支持的版本.';
+      throw new Error('无法加载支持的版本');
     }
     const supported: SupportedVersions = await supportedVersionsResponse.json();
-    log(`Loaded supported versions: ${supported.create.length} Create versions, ${JSON.stringify(supported.create.map(c => c.version))}`);
+    log(`加载支持版本: ${supported.create.length} 机械动力 版本, ${JSON.stringify(supported.create.map(c => c.version))}`);
 
     supported.create.forEach(c => {
       const option = document.createElement('option');
@@ -156,11 +162,11 @@ if (!canvas) {
     if (Array.from(createSelect.options).some(o => o.value === '6.0.9')) {
       createSelect.value = '6.0.9';
     }
-    log(`Create select populated: ${createSelect.options.length} options, selected: "${createSelect.value}"`);
+    log(`机械动力 选择: ${createSelect.options.length} 设置, 选择: "${createSelect.value}"`);
 
     const updateMcSelect = async () => {
       const createVersion = createSelect.value;
-      log(`updateMcSelect called for Create ${createVersion}`);
+      log(` 机械动力 调用 updateMcSelect ${createVersion}`);
       const mapping = supported.create.find(c => c.version === createVersion);
       const previousMc = mcSelect.value;
 
@@ -168,7 +174,7 @@ if (!canvas) {
       mapping?.game_versions.sort().reverse().forEach(mc => {
         const option = document.createElement('option');
         option.value = mc;
-        option.textContent = `MC ${mc}`;
+        option.textContent = `Minecraft ${mc}`;
         mcSelect.appendChild(option);
       });
 
@@ -181,21 +187,21 @@ if (!canvas) {
     };
 
     createSelect.addEventListener('change', async () => {
-      log(`Create version changed to: ${createSelect.value}`);
+      log(`机械动力 版本选择: ${createSelect.value}`);
       await updateMcSelect();
     });
     mcSelect.addEventListener('change', async () => {
-      log(`MC version changed to: ${mcSelect.value}`);
+      log(`Minecraft 版本更换: ${mcSelect.value}`);
       await updateViewer();
     });
 
-    log('Calling initial updateMcSelect...');
+    log('初始化调用updateMcSelect...');
     await updateMcSelect();
-    log('Initialization complete, viewer=' + (viewer ? 'OK' : 'null'));
+    log('初始化完成, 解析=' + (viewer ? 'OK' : 'null'));
   } catch (e: any) {
-    log(`Init failed: ${e?.message ?? e}`, 'error');
+    log(`初始失败: ${e?.message ?? e}`, 'error');
     if (e?.stack) log(`Stack: ${e.stack}`, 'error');
-    statusEl.textContent = 'Failed to load supported versions.';
+    statusEl.textContent = '无法加载支持版本.';
   }
 
   showGridCheckbox.addEventListener('change', () => {
