@@ -153,6 +153,18 @@ export class CreateModLoader {
             }
           }
 
+          // Extra models for addon blocks
+          if (ns === 'simulated') {
+            if (id.includes('analog_transmission')) {
+              await this.loadModelRecursive(`${ns}:block/analog_transmission/gear`);
+            }
+          }
+          if (ns === 'aeronautics') {
+            if (id.includes('propeller') && !id.includes('bearing')) {
+              await this.loadModelRecursive(`${ns}:block/${id.split(':')[1]}/propeller`);
+            }
+          }
+
         } else {
           this.missingResources.add(`Blockstate: ${id}`);
         }

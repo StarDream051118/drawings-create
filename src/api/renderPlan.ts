@@ -431,6 +431,82 @@ export function buildRenderPlan (
       }
     }
 
+    // Analog transmission: inject spinning gear
+    if (id.includes('analog_transmission') && props) {
+      const axis = props['axis'] as string | undefined;
+      if (axis) {
+        const gearModelId = Identifier.parse('simulated:block/analog_transmission/gear');
+        const gearModel = resources.getBlockModel(gearModelId);
+        if (gearModel && blockModelHasGeometry(gearModel)) {
+          const gearMesh = gearModel.getMesh(resources, {} as Cull, undefined);
+          if (gearMesh) {
+            // Apply axis rotation (matching the blockstate's variant rotation for this axis)
+            const variantForAxis: Record<string, { x?: number; y?: number }> = {
+              x: { x: 90, y: 90 },
+              y: {},
+              z: { x: 90, y: 180 }
+            };
+            const rot = variantForAxis[axis] || {};
+            if (rot.x || rot.y) {
+              const t = mat4.create();
+              mat4.translate(t, t, [8, 8, 8]);
+              if (rot.y) mat4.rotateY(t, t, -glMatrix.toRadian(rot.y));
+              if (rot.x) mat4.rotateX(t, t, -glMatrix.toRadian(rot.x));
+              mat4.translate(t, t, [-8, -8, -8]);
+              gearMesh.transform(t);
+            }
+            const scale = mat4.create();
+            mat4.scale(scale, scale, [0.0625, 0.0625, 0.0625]);
+            gearMesh.transform(scale);
+            (gearMesh as ExtendedMesh).id = 'simulated:block/analog_transmission/gear';
+            uploadMesh(gearMesh);
+            parts.push({ mesh: gearMesh, modelId: 'simulated:block/analog_transmission/gear', motion: { kind: 'spin', axis: axis as Axis, speed: 0.02 } });
+          }
+        }
+      }
+    }
+
+    // Propeller sub-models: aeronautics propellers (blades from blade.json)
+    if (id.includes('propeller') && !id.includes('bearing') && props) {
+      const ns = id.includes(':') ? id.split(':')[0]! : '';
+      if (ns === 'aeronautics') {
+        const subModelId = `${ns}:block/${id.split(':')[1]}/propeller`;
+        const subModelIdParsed = Identifier.parse(subModelId);
+        const subModel = resources.getBlockModel(subModelIdParsed);
+        if (subModel && blockModelHasGeometry(subModel)) {
+          const mesh = subModel.getMesh(resources, {} as Cull, undefined);
+          if (mesh) {
+            const axis = resolveAxis(props) ?? 'y';
+            // Apply variant rotation to align blades with casing
+            const facing = props['facing'] as string | undefined;
+            const facingRot: Record<string, { x?: number; y?: number }> = {
+              up: {},
+              down: { x: 180 },
+              north: { x: 90 },
+              south: { x: 90, y: 180 },
+              east: { x: 90, y: 90 },
+              west: { x: 90, y: 270 }
+            };
+            const rot = facing ? facingRot[facing] ?? {} : {};
+            if (rot.x || rot.y) {
+              const t = mat4.create();
+              mat4.translate(t, t, [8, 8, 8]);
+              if (rot.y) mat4.rotateY(t, t, -glMatrix.toRadian(rot.y));
+              if (rot.x) mat4.rotateX(t, t, -glMatrix.toRadian(rot.x));
+              mat4.translate(t, t, [-8, -8, -8]);
+              mesh.transform(t);
+            }
+            const scale = mat4.create();
+            mat4.scale(scale, scale, [0.0625, 0.0625, 0.0625]);
+            mesh.transform(scale);
+            (mesh as ExtendedMesh).id = subModelId;
+            uploadMesh(mesh);
+            parts.push({ mesh, modelId: subModelId, motion: { kind: 'spin', axis, speed: 0.02 } });
+          }
+        }
+      }
+    }
+
     if (parts.length > 0) {
       plan.push({ blockId: id, pos: block.pos, parts });
       flywheelBlocks.add(id);
@@ -443,9 +519,11 @@ export function buildRenderPlan (
 function inferMotion (id: string, model: string, props: Record<string, string | boolean | number | undefined>, variant: VariantLike): MotionSpec | null {
   const axis = resolveAxis(props) ?? resolveAxisFromVariant(variant) ?? 'y';
   const lowered = model.toLowerCase();
+  // Extract just the model file name (last part after /) to avoid matching parent dir names
+  const modelName = lowered.split('/').pop() ?? '';
 
-  if (id.includes('mechanical_mixer') && lowered.includes('head')) {
-    return { kind: 'spin', axis: 'y', speed: 0.5 };
+  if (id.includes('mechanical_mixer') && modelName.includes('head')) {
+    return { kind: 'spin', axis: 'y', speed: 0.02 };
   }
 
   // Ignore obvious casings/frames so only inner shafts/gears spin
@@ -473,12 +551,12 @@ function inferMotion (id: string, model: string, props: Record<string, string | 
 
   // Exclude when model clearly refers to press/deployer/saw heads or poles
   const nonSpinToolTokens = ['press', 'deployer', 'saw', 'blade', 'head', 'pole'];
-  if (nonSpinToolTokens.some(t => lowered.includes(t)) && !lowered.includes('shaft')) {
+  if (nonSpinToolTokens.some(t => modelName.includes(t)) && !modelName.includes('shaft')) {
     return null;
   }
 
-  if (spinTokens.some(k => lowered.includes(k) || id.includes(k))) {
-    return { kind: 'spin', axis, speed: 0.5 };
+  if (spinTokens.some(k => modelName.includes(k))) {
+    return { kind: 'spin', axis, speed: 0.02 };
   }
 
   return null;
