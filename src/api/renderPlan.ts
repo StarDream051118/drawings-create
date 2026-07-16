@@ -263,6 +263,7 @@ export function buildRenderPlan (
   for (const block of blocks) {
     const id = block.state.getName().toString();
     const props = block.state.getProperties();
+    console.log('Block:', id, JSON.stringify(props), JSON.stringify(block.pos));
     // Route vanilla blocks to the static renderer; keep Create blocks even if property-less (e.g., mechanical mixer).
     if (id.startsWith('minecraft:')) {
       continue;
@@ -466,46 +467,8 @@ export function buildRenderPlan (
       }
     }
 
-    // Propeller sub-models: aeronautics propellers (blades from blade.json)
-    if (id.includes('propeller') && !id.includes('bearing') && props) {
-      const ns = id.includes(':') ? id.split(':')[0]! : '';
-      if (ns === 'aeronautics') {
-        const subModelId = `${ns}:block/${id.split(':')[1]}/propeller`;
-        const subModelIdParsed = Identifier.parse(subModelId);
-        const subModel = resources.getBlockModel(subModelIdParsed);
-        if (subModel && blockModelHasGeometry(subModel)) {
-          const mesh = subModel.getMesh(resources, {} as Cull, undefined);
-          if (mesh) {
-            const axis = resolveAxis(props) ?? 'y';
-            // Apply variant rotation to align blades with casing
-            const facing = props['facing'] as string | undefined;
-            const facingRot: Record<string, { x?: number; y?: number }> = {
-              up: {},
-              down: { x: 180 },
-              north: { x: 90 },
-              south: { x: 90, y: 180 },
-              east: { x: 90, y: 90 },
-              west: { x: 90, y: 270 }
-            };
-            const rot = facing ? facingRot[facing] ?? {} : {};
-            if (rot.x || rot.y) {
-              const t = mat4.create();
-              mat4.translate(t, t, [8, 8, 8]);
-              if (rot.y) mat4.rotateY(t, t, -glMatrix.toRadian(rot.y));
-              if (rot.x) mat4.rotateX(t, t, -glMatrix.toRadian(rot.x));
-              mat4.translate(t, t, [-8, -8, -8]);
-              mesh.transform(t);
-            }
-            const scale = mat4.create();
-            mat4.scale(scale, scale, [0.0625, 0.0625, 0.0625]);
-            mesh.transform(scale);
-            (mesh as ExtendedMesh).id = subModelId;
-            uploadMesh(mesh);
-            parts.push({ mesh, modelId: subModelId, motion: { kind: 'spin', axis, speed: 0.02 } });
-          }
-        }
-      }
-    }
+    // Propeller sub-models: handled via multipart injection in createLoader.ts
+    if (false && id.includes('propeller') && !id.includes('bearing') && props) { void 0; }
 
     if (parts.length > 0) {
       plan.push({ blockId: id, pos: block.pos, parts });

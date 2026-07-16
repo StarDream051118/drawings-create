@@ -123,6 +123,41 @@ export class CreateModLoader {
             }
           }
 
+          // Inject propeller sub-model for aeronautics propeller blocks (same logic as encased gear)
+          if (ns === 'aeronautics' && id.includes('propeller') && !id.includes('bearing')) {
+            const blockName = id.split(':')[1]!;
+            if (defJson.variants) {
+              defJson.multipart = defJson.multipart ?? [];
+              for (const [key, variant] of Object.entries(defJson.variants)) {
+                const when: Record<string, string> = {};
+                key.split(',').forEach(pair => {
+                  const [k, v] = pair.split('=');
+                  if (k && v) when[k] = v;
+                });
+                const entries = Array.isArray(variant) ? variant : [variant];
+                for (const entry of entries) {
+                  defJson.multipart.push({ apply: entry, when: Object.keys(when).length ? when : undefined });
+                }
+              }
+              delete defJson.variants;
+            }
+            // Add propeller with same rotation as casing for each facing and reversed variant
+            defJson.multipart = defJson.multipart ?? [];
+            const propellerRotations: Record<string, { x?: number; y?: number }> = {
+              up: {}, down: { x: 180 }, north: { x: 90 },
+              south: { x: 90, y: 180 }, east: { x: 90, y: 90 }, west: { x: 90, y: 270 }
+            };
+            for (const [facing, rot] of Object.entries(propellerRotations)) {
+              for (const reversed of [false, true]) {
+                const modelName = reversed ? 'propeller_reversed' : 'propeller';
+                const apply: { model: string; x?: number; y?: number } = { model: `aeronautics:block/${blockName}/${modelName}` };
+                if (rot.x) apply.x = rot.x;
+                if (rot.y) apply.y = rot.y;
+                defJson.multipart.push({ apply, when: { facing, reversed: String(reversed) } as Record<string, string> });
+              }
+            }
+          }
+
           definitions[id] = BlockDefinition.fromJson(defJson);
 
           // 2. Scan for Models in the definition
@@ -162,6 +197,7 @@ export class CreateModLoader {
           if (ns === 'aeronautics') {
             if (id.includes('propeller') && !id.includes('bearing')) {
               await this.loadModelRecursive(`${ns}:block/${id.split(':')[1]}/propeller`);
+              await this.loadModelRecursive(`${ns}:block/${id.split(':')[1]}/propeller_reversed`);
             }
           }
 
@@ -574,7 +610,35 @@ export class CreateModLoader {
             models.push('create:block/belt_casing/horizontal_end');
           }
         } else if (props.part === 'pulley') {
-          models.push('create:block/belt_pulley');
+          models.push('create:block/belt/middle');
+          models.push('create:block/belt/middle_bottom');
+          if (props.casing === 'true') {
+            models.push('create:block/belt_casing/horizontal_pulley');
+          }
+        }
+      } else if (props.slope === 'vertical') {
+        // Vertical belts: use horizontal models, variant x:90 makes them upright
+        if (props.part === 'middle') {
+          models.push('create:block/belt/middle');
+          models.push('create:block/belt/middle_bottom');
+          if (props.casing === 'true') {
+            models.push('create:block/belt_casing/horizontal_middle');
+          }
+        } else if (props.part === 'start') {
+          models.push('create:block/belt/end');
+          models.push('create:block/belt/end_bottom');
+          if (props.casing === 'true') {
+            models.push('create:block/belt_casing/horizontal_end');
+          }
+        } else if (props.part === 'end') {
+          models.push('create:block/belt/start');
+          models.push('create:block/belt/start_bottom');
+          if (props.casing === 'true') {
+            models.push('create:block/belt_casing/horizontal_start');
+          }
+        } else if (props.part === 'pulley') {
+          models.push('create:block/belt/middle');
+          models.push('create:block/belt/middle_bottom');
           if (props.casing === 'true') {
             models.push('create:block/belt_casing/horizontal_pulley');
           }
@@ -588,16 +652,23 @@ export class CreateModLoader {
             models.push('create:block/belt_casing/diagonal_middle');
           }
         } else if (props.part === 'start') {
-          models.push('create:block/belt/diagonal_start');
+          // Swap start/end for specific diagonal directions
+          const swappedStart = (props.facing === 'east' && props.slope === 'downward') ||
+                               (props.facing === 'north' && props.slope === 'downward');
+          models.push(swappedStart ? 'create:block/belt/diagonal_end' : 'create:block/belt/diagonal_start');
           if (props.casing === 'true') {
-            models.push('create:block/belt_casing/diagonal_start');
+            models.push(swappedStart ? 'create:block/belt_casing/diagonal_end' : 'create:block/belt_casing/diagonal_start');
           }
         } else if (props.part === 'end') {
-          models.push('create:block/belt/diagonal_end');
+          const swappedEnd = (props.facing === 'east' && props.slope === 'downward') ||
+                             (props.facing === 'north' && props.slope === 'downward');
+          models.push(swappedEnd ? 'create:block/belt/diagonal_start' : 'create:block/belt/diagonal_end');
           if (props.casing === 'true') {
-            models.push('create:block/belt_casing/diagonal_end');
+            models.push(swappedEnd ? 'create:block/belt_casing/diagonal_start' : 'create:block/belt_casing/diagonal_end');
           }
         } else if (props.part === 'pulley') {
+          models.push('create:block/belt/diagonal_middle');
+          models.push('create:block/belt_pulley');
           if (props.casing === 'true') {
             models.push('create:block/belt_casing/diagonal_pulley');
           }
@@ -610,13 +681,42 @@ export class CreateModLoader {
         models.push('create:block/belt/particle');
       }
 
-      // 2. Create Multipart Entry
+      // Override rotation for E-W diagonal start/end blocks
+      let rotOverride = { x: original.x, y: original.y };
+      if (props.part !== 'middle') {
+        if (props.facing === 'east' && props.slope === 'downward') {
+          rotOverride = { x: original.x, y: 270 };
+        }
+        if (props.facing === 'east' && props.slope === 'upward') {
+          rotOverride = { x: original.x, y: 90 };
+        }
+      }
+
+      // 2. Create Multipart Entry (surface models)
       for (const m of models) {
         multipart.push({
           apply: {
             model: m,
-            x: original.x,
-            y: original.y,
+            x: rotOverride.x,
+            y: rotOverride.y,
+            uvlock: original.uvlock
+          },
+          when: props
+        });
+      }
+
+      // Inject belt_pulley (rotating shaft) as sub-model for start/end blocks
+      if (props.part === 'start' || props.part === 'end') {
+        let pulleyX = rotOverride.x;
+        const pulleyY = (rotOverride.y ?? 0) + 90;
+        if (props.slope !== 'vertical') {
+          pulleyX = 90;
+        }
+        multipart.push({
+          apply: {
+            model: 'create:block/belt_pulley',
+            x: pulleyX,
+            y: pulleyY,
             uvlock: original.uvlock
           },
           when: props

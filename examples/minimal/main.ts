@@ -1,7 +1,7 @@
 
 import { createStructureViewer, FetchResourceProvider, type SupportedVersions } from '../../src';
 
-const ENABLE_LOG = false;
+const ENABLE_LOG = true;
 
 const logPanel = document.getElementById('log-panel')!;
 function log(msg: string, level: 'info' | 'warn' | 'error' = 'info') {
