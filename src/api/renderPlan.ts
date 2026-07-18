@@ -488,7 +488,12 @@ function inferMotion (id: string, model: string, props: Record<string, string | 
   const beltScrollTokens = ['belt/middle', 'belt/start', 'belt/end', 'belt/diagonal_middle', 'belt/diagonal_start', 'belt/diagonal_end'];
   const excludedBeltTokens = ['belt_casing', 'belt_funnel', 'belt_tunnel', 'particle'];
   if (beltScrollTokens.some(k => lowered.includes(k)) && !excludedBeltTokens.some(k => lowered.includes(k))) {
-    // UV+ → visual moves opposite direction; north/east need negative speed
+    if (lowered.includes('diagonal')) {
+      // Diagonal: direction by slope (downward=negative, upward=positive)
+      const slope = props['slope'] as string | undefined;
+      return { kind: 'scroll', axis: 'y', speed: slope === 'downward' ? -0.01 : 0.01 };
+    }
+    // Horizontal: UV+ moves opposite direction; north/east need negative speed
     const facing = props['facing'] as string | undefined;
     const flip = (facing === 'north' || facing === 'east') ? -1 : 1;
     return { kind: 'scroll', axis: 'y', speed: 0.01 * flip };
@@ -542,19 +547,9 @@ function inferMotion (id: string, model: string, props: Record<string, string | 
   if (spinTokens.some(k => modelName.includes(k))) {
     let speed = 0.02;
     if (lowered.includes('belt_pulley')) {
-      // Belt pulley: always positive speed
-      speed = 0.02;
-    } else if (id === 'create:gearbox' && modelName.includes('shaft_half')) {
-      const vx = variant.x ?? 0;
-      const vy = variant.y ?? 0;
-      const blockAxis = (props['axis'] as string) ?? 'y';
-      const isNegativeHalf = (vy === 180 || vy === 270 || vx === 90);
-      speed = isNegativeHalf ? -0.02 : 0.02;
-      if (blockAxis === 'y' || blockAxis === 'x') {
-        speed = -speed;
-      } else if (blockAxis === 'z' && (vx === 90 || vx === 270)) {
-        speed = -speed;
-      }
+      // Horizontal/vertical: positive; diagonal (down/up): negative
+      const slope = props['slope'] as string | undefined;
+      speed = (slope === 'downward' || slope === 'upward') ? -0.02 : 0.02;
     } else if (id === 'create:creative_motor') {
       speed = -0.02;
     }
