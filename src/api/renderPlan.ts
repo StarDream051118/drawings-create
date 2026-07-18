@@ -488,7 +488,10 @@ function inferMotion (id: string, model: string, props: Record<string, string | 
   const beltScrollTokens = ['belt/middle', 'belt/start', 'belt/end'];
   const excludedBeltTokens = ['belt_casing', 'belt_funnel', 'belt_tunnel', 'particle'];
   if (beltScrollTokens.some(k => lowered.includes(k)) && !excludedBeltTokens.some(k => lowered.includes(k))) {
-    return { kind: 'scroll', axis: 'y', speed: 0.01 };
+    // UV+ → visual moves opposite direction; north/east need negative speed
+    const facing = props['facing'] as string | undefined;
+    const flip = (facing === 'north' || facing === 'east') ? -1 : 1;
+    return { kind: 'scroll', axis: 'y', speed: 0.01 * flip };
   }
 
   // Gearbox shafts: shaft_half geometry is along Z, use base='z' so variant rotation maps correctly
@@ -538,7 +541,10 @@ function inferMotion (id: string, model: string, props: Record<string, string | 
 
   if (spinTokens.some(k => modelName.includes(k))) {
     let speed = 0.02;
-    if (id === 'create:gearbox' && modelName.includes('shaft_half')) {
+    if (lowered.includes('belt_pulley')) {
+      // Belt pulley: always positive speed
+      speed = 0.02;
+    } else if (id === 'create:gearbox' && modelName.includes('shaft_half')) {
       const vx = variant.x ?? 0;
       const vy = variant.y ?? 0;
       const blockAxis = (props['axis'] as string) ?? 'y';
