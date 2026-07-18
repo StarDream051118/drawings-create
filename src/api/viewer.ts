@@ -2,6 +2,7 @@ import { glMatrix, mat4 } from 'gl-matrix';
 import { Flywheel } from '../flywheel/flywheel';
 import { RotatingVisual } from '../flywheel/lib/visual/rotatingVisual';
 import { StaticVisual } from '../flywheel/lib/visual/staticVisual';
+import { BeltScrollingVisual } from '../flywheel/lib/visual/beltScrollingVisual';
 import type { Structure } from 'deepslate';
 import type { BlockPos } from 'deepslate/core';
 import { StructureRenderer } from 'deepslate/render';
@@ -19,7 +20,7 @@ export type Vec3 = [number, number, number];
 export type ViewerState = {
   renderer: StructureRenderer | null;
   flywheel: Flywheel | null;
-  visuals: (RotatingVisual | StaticVisual)[];
+  visuals: (RotatingVisual | StaticVisual | BeltScrollingVisual)[];
   structure: Structure | null;
   center: Vec3;
   distance: number;
@@ -33,7 +34,7 @@ export type ViewerState = {
 };
 
 export function uploadMeshBuffers (gl: WebGLRenderingContext, mesh: Mesh) {
-  const needsQuads = mesh.quadVertices() > 0 && (!mesh.posBuffer || !mesh.normalBuffer || !mesh.textureBuffer || !mesh.indexBuffer || !mesh.colorBuffer);
+  const needsQuads = mesh.quadVertices() > 0 && (!mesh.posBuffer || !mesh.normalBuffer || !mesh.textureBuffer || !mesh.indexBuffer || !mesh.colorBuffer || !mesh.textureLimitBuffer);
   const needsLines = mesh.lineVertices() > 0 && (!mesh.linePosBuffer || !mesh.lineColorBuffer);
   if (!needsQuads && !needsLines) {
     return;
@@ -51,6 +52,7 @@ export function uploadMeshBuffers (gl: WebGLRenderingContext, mesh: Mesh) {
     const normals: number[] = [];
     const uvs: number[] = [];
     const colors: number[] = [];
+    const texLimits: number[] = [];
     const indices: number[] = [];
     let index = 0;
 
@@ -77,6 +79,11 @@ export function uploadMeshBuffers (gl: WebGLRenderingContext, mesh: Mesh) {
         uvs.push(v.texture ? v.texture[0] : 0, v.texture ? v.texture[1] : 0);
         const col = v.color ?? [1, 1, 1];
         colors.push(col[0], col[1], col[2]);
+        if (v.textureLimit) {
+          texLimits.push(v.textureLimit[0], v.textureLimit[1], v.textureLimit[2], v.textureLimit[3]);
+        } else {
+          texLimits.push(0, 0, 1, 1);
+        }
       };
 
       pushVert(quad.v1);
@@ -93,6 +100,7 @@ export function uploadMeshBuffers (gl: WebGLRenderingContext, mesh: Mesh) {
     mesh.textureBuffer = bindAndData(uvs, gl.ARRAY_BUFFER);
     mesh.colorBuffer = bindAndData(colors, gl.ARRAY_BUFFER);
     mesh.indexBuffer = bindAndData(indices, gl.ELEMENT_ARRAY_BUFFER);
+    mesh.textureLimitBuffer = bindAndData(texLimits, gl.ARRAY_BUFFER);
   }
 
   if (needsLines) {
@@ -407,7 +415,9 @@ export function createStructureViewer (options: ViewerOptions) {
       state.visuals = [];
       for (const block of renderPlan.blocks) {
         for (const part of block.parts) {
-          if (part.motion && part.motion.kind === 'spin') {
+          if (part.motion?.kind === 'scroll') {
+            state.visuals.push(new BeltScrollingVisual({ instancerProvider: () => state.flywheel!, partialTick: () => 0 }, block.pos, part.mesh, part.motion.speed));
+          } else if (part.motion?.kind === 'spin') {
             state.visuals.push(new RotatingVisual({ instancerProvider: () => state.flywheel!, partialTick: () => 0 }, block.pos, part.mesh, part.motion.axis, part.motion.speed));
           } else {
             state.visuals.push(new StaticVisual({ instancerProvider: () => state.flywheel!, partialTick: () => 0 }, block.pos, part.mesh));

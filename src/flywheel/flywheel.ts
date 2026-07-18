@@ -124,11 +124,77 @@ const FS_COLOR = `
   }
 `;
 
+const VS_BELT_SCROLL = `
+  attribute vec4 vertPos;
+  attribute vec2 texCoord;
+  attribute vec3 normal;
+  attribute vec4 texLimit;
+
+  // Instance attributes (18 floats: 16 for mat4 + 2 for scroll)
+  attribute vec4 iModelRow0;
+  attribute vec4 iModelRow1;
+  attribute vec4 iModelRow2;
+  attribute vec4 iModelRow3;
+  attribute vec2 iScrollOffset;
+
+  uniform mat4 mView;
+  uniform mat4 mProj;
+
+  varying highp vec2 vTexCoord;
+  varying highp vec2 vScrollOffset;
+  varying highp vec4 vTexLimit;
+  varying highp float vLighting;
+  varying highp vec3 vWorldNormal;
+
+  void main(void) {
+    mat4 modelMatrix = mat4(iModelRow0, iModelRow1, iModelRow2, iModelRow3);
+    vec4 worldPos = modelMatrix * vertPos;
+    gl_Position = mProj * mView * worldPos;
+    vTexCoord = texCoord;
+    vScrollOffset = iScrollOffset;
+    vTexLimit = texLimit;
+    vec3 worldNormal = mat3(modelMatrix) * normal;
+    vWorldNormal = worldNormal;
+    vLighting = worldNormal.y * 0.2 + abs(worldNormal.z) * 0.1 + 0.8;
+  }
+`;
+
+const FS_BELT_SCROLL = `
+  precision highp float;
+  varying highp vec2 vTexCoord;
+  varying highp vec2 vScrollOffset;
+  varying highp vec4 vTexLimit;
+  varying highp float vLighting;
+  varying highp vec3 vWorldNormal;
+
+  uniform sampler2D sampler;
+
+  void main(void) {
+    vec2 range = vTexLimit.zw - vTexLimit.xy;
+    vec2 beltUV = (vTexCoord - vTexLimit.xy) / range + vScrollOffset.xy;
+
+    // belt_scroll atlas: top half = belt surface, bottom half = belt edge
+    if (vWorldNormal.y > 0.5) {
+      // Top face: belt surface, wrap at half-tile boundary
+      beltUV.y = fract(beltUV.y * 2.0) * 0.5;
+    } else {
+      // Side face: belt edge, remap [0,1] → [0.5, 1]
+      beltUV.y = 0.5 + fract(beltUV.y) * 0.5;
+    }
+
+    vec2 atlasUV = vTexLimit.xy + beltUV * range;
+    vec4 texColor = texture2D(sampler, atlasUV);
+    if (texColor.a < 0.1) discard;
+    gl_FragColor = vec4(texColor.xyz * vLighting, texColor.a);
+  }
+`;
+
 export class Flywheel implements InstancerProvider {
   private readonly instancers: Map<string, InstancerImpl<Instance>> = new Map();
   private readonly shader: ShaderProgram;
   private readonly lineShader: ShaderProgram;
   private readonly colorShader: ShaderProgram;
+  private readonly beltScrollShader: ShaderProgram;
   private readonly ext: ANGLE_instanced_arrays | null = null;
   private texture: WebGLTexture | null = null;
 
@@ -136,6 +202,7 @@ export class Flywheel implements InstancerProvider {
     this.shader = new ShaderProgram(gl, VS_TRANSFORMED, FS_TRANSFORMED);
     this.lineShader = new ShaderProgram(gl, VS_LINES, FS_LINES);
     this.colorShader = new ShaderProgram(gl, VS_COLOR, FS_COLOR);
+    this.beltScrollShader = new ShaderProgram(gl, VS_BELT_SCROLL, FS_BELT_SCROLL);
     this.ext = gl.getExtension('ANGLE_instanced_arrays');
   }
 
@@ -168,8 +235,7 @@ export class Flywheel implements InstancerProvider {
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-    const bindInstanceAttrs = (program: WebGLProgram) => {
-      const stride = 64; // 16 floats * 4 bytes
+    const bindInstanceAttrs = (program: WebGLProgram, stride: number = 64) => {
       const loc0 = gl.getAttribLocation(program, 'iModelRow0');
       const loc1 = gl.getAttribLocation(program, 'iModelRow1');
       const loc2 = gl.getAttribLocation(program, 'iModelRow2');
@@ -210,8 +276,10 @@ export class Flywheel implements InstancerProvider {
         continue;
       }
 
-      // Draw colored quads (overlays)
-      if (model.colorOnly && model.quadVertices() > 0 && model.posBuffer && model.colorBuffer && model.indexBuffer) {
+      const isScrollFormat = instancer.type.format() === 18;
+
+      // Draw colored quads (overlays) — skip for scroll format
+      if (!isScrollFormat && model.colorOnly && model.quadVertices() > 0 && model.posBuffer && model.colorBuffer && model.indexBuffer) {
         const program = this.colorShader.getProgram();
         gl.useProgram(program);
         const locView = gl.getUniformLocation(program, 'mView');
@@ -244,6 +312,64 @@ export class Flywheel implements InstancerProvider {
           instancer.instanceCount
         );
         unbindInstanceAttrs(locs);
+      } else if (isScrollFormat && model.quadVertices() > 0 && model.posBuffer && model.textureBuffer && model.normalBuffer && model.indexBuffer) {
+        // Draw textured quads with belt_scroll texture (GL_REPEAT)
+        const program = this.beltScrollShader.getProgram();
+        gl.useProgram(program);
+        const locView = gl.getUniformLocation(program, 'mView');
+        const locProj = gl.getUniformLocation(program, 'mProj');
+        gl.uniformMatrix4fv(locView, false, viewMatrix);
+        gl.uniformMatrix4fv(locProj, false, projMatrix);
+
+        if (this.texture) {
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, this.texture);
+          const locSampler = gl.getUniformLocation(program, 'sampler');
+          gl.uniform1i(locSampler, 0);
+        }
+
+        const locVert = gl.getAttribLocation(program, 'vertPos');
+        const locTex = gl.getAttribLocation(program, 'texCoord');
+        const locNorm = gl.getAttribLocation(program, 'normal');
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, model.posBuffer);
+        gl.vertexAttribPointer(locVert, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(locVert);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, model.textureBuffer);
+        gl.vertexAttribPointer(locTex, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(locTex);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, model.normalBuffer);
+        gl.vertexAttribPointer(locNorm, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(locNorm);
+
+        if (model.textureLimitBuffer) {
+          const locTexLimit = gl.getAttribLocation(program, 'texLimit');
+          gl.bindBuffer(gl.ARRAY_BUFFER, model.textureLimitBuffer);
+          gl.vertexAttribPointer(locTexLimit, 4, gl.FLOAT, false, 0, 0);
+          gl.enableVertexAttribArray(locTexLimit);
+        }
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indexBuffer);
+
+        instancer.glBuffer.bind(gl.ARRAY_BUFFER);
+        const scrollLocs = bindInstanceAttrs(program, 72);
+        const locScroll = gl.getAttribLocation(program, 'iScrollOffset');
+        gl.enableVertexAttribArray(locScroll);
+        gl.vertexAttribPointer(locScroll, 2, gl.FLOAT, false, 72, 64);
+        if (this.ext) this.ext.vertexAttribDivisorANGLE(locScroll, 1);
+
+        this.ext.drawElementsInstancedANGLE(
+          gl.TRIANGLES,
+          model.quadIndices(),
+          gl.UNSIGNED_SHORT,
+          0,
+          instancer.instanceCount
+        );
+
+        if (this.ext) this.ext.vertexAttribDivisorANGLE(locScroll, 0);
+        unbindInstanceAttrs(scrollLocs);
       } else if (model.quadVertices() > 0 && model.posBuffer && model.textureBuffer && model.normalBuffer && model.indexBuffer) {
         // Draw textured quads
         const program = this.shader.getProgram();

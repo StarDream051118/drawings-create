@@ -13,7 +13,7 @@ export class InstancerImpl<D extends Instance> implements Instancer<D> {
   private count: number = 0;
 
   constructor (
-    private readonly type: InstanceType<D>,
+    public readonly type: InstanceType<D>,
     private readonly gl: WebGLRenderingContext
   ) {
     this.data = new Float32Array(this.capacity * this.type.format());

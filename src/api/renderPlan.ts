@@ -10,7 +10,7 @@ import type { ExtendedMesh, VariantLike } from '../types/assets';
 
 export type Axis = 'x' | 'y' | 'z';
 export interface MotionSpec {
-  kind: 'spin';
+  kind: 'spin' | 'scroll';
   axis: Axis;
   speed: number;
 }
@@ -483,6 +483,13 @@ function inferMotion (id: string, model: string, props: Record<string, string | 
   const lowered = model.toLowerCase();
   // Extract just the model file name (last part after /) to avoid matching parent dir names
   const modelName = lowered.split('/').pop() ?? '';
+
+  // Belt surface models: scroll UV animation (not pulley/casing/funnel/tunnel/particle)
+  const beltScrollTokens = ['belt/middle', 'belt/start', 'belt/end'];
+  const excludedBeltTokens = ['belt_pulley', 'belt_casing', 'belt_funnel', 'belt_tunnel', 'particle'];
+  if (beltScrollTokens.some(k => lowered.includes(k)) && !excludedBeltTokens.some(k => lowered.includes(k))) {
+    return { kind: 'scroll', axis: 'y', speed: 0.004 };
+  }
 
   // Gearbox shafts: shaft_half geometry is along Z, use base='z' so variant rotation maps correctly
   let axis: Axis = 'y';
