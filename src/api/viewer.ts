@@ -428,7 +428,7 @@ export function createStructureViewer (options: ViewerOptions) {
           state.flywheel.setBeltTexLimit(beltUv[0], beltUv[1], beltUv[2], beltUv[3]);
         }
       } catch (e) {
-        console.warn('belt_scroll texture not found', e);
+        console.warn('belt texture not found', e);
       }
 
       state.visuals = [];

@@ -485,7 +485,7 @@ function inferMotion (id: string, model: string, props: Record<string, string | 
   const modelName = lowered.split('/').pop() ?? '';
 
   // Belt surface models: scroll UV animation (not pulley/casing/funnel/tunnel/particle)
-  const beltScrollTokens = ['belt/middle', 'belt/start', 'belt/end'];
+  const beltScrollTokens = ['belt/middle', 'belt/start', 'belt/end', 'belt/diagonal_middle', 'belt/diagonal_start', 'belt/diagonal_end'];
   const excludedBeltTokens = ['belt_casing', 'belt_funnel', 'belt_tunnel', 'particle'];
   if (beltScrollTokens.some(k => lowered.includes(k)) && !excludedBeltTokens.some(k => lowered.includes(k))) {
     // UV+ → visual moves opposite direction; north/east need negative speed

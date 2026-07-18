@@ -160,16 +160,13 @@ const FS_BELT_SCROLL = `
   precision highp float;
   varying highp vec2 vTexCoord;
   varying highp vec2 vScrollOffset;
-  varying highp vec4 vTexLimit;
   varying highp float vLighting;
 
   uniform sampler2D beltSampler;
   uniform vec4 beltTexLimit;
 
   void main(void) {
-    // Normalize using the FULL belt texture's atlas range (not per-face texLimit)
-    vec2 beltRange = beltTexLimit.zw - beltTexLimit.xy;
-    vec2 beltUV = (vTexCoord - beltTexLimit.xy) / beltRange + vScrollOffset.xy;
+    vec2 beltUV = (vTexCoord - beltTexLimit.xy) / (beltTexLimit.zw - beltTexLimit.xy) + vScrollOffset.xy;
     vec4 texColor = texture2D(beltSampler, beltUV);
     if (texColor.a < 0.1) discard;
     gl_FragColor = vec4(texColor.xyz * vLighting, texColor.a);
