@@ -55,8 +55,7 @@ export class RotatingVisual extends AbstractBlockEntityVisual implements Dynamic
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   update (_partialTick: number): void {
-    // Ticking update
-    this.rotation += this.speed;
+    this.rotation += this.speed * _partialTick;
     this.rotation %= (Math.PI * 2);
   }
 

@@ -111,6 +111,10 @@ export class CreateModLoader {
               this.patchFluidPipeConnectionRules(defJson);
             } else if (id.includes('encased_cogwheel') || id.includes('encased_large_cogwheel') || id.includes('encased_shaft')) {
               this.patchEncasedCogDefinition(defJson, id);
+            } else if (id === 'create:gearbox') {
+              this.patchGearboxDefinition(defJson);
+            } else if (id === 'create:creative_motor') {
+              this.patchCreativeMotorDefinition(defJson);
             }
 
             // Auto subparts mutate the blockstate; run them before freezing into BlockDefinition.
@@ -668,7 +672,6 @@ export class CreateModLoader {
           }
         } else if (props.part === 'pulley') {
           models.push('create:block/belt/diagonal_middle');
-          models.push('create:block/belt_pulley');
           if (props.casing === 'true') {
             models.push('create:block/belt_casing/diagonal_pulley');
           }
@@ -705,8 +708,8 @@ export class CreateModLoader {
         });
       }
 
-      // Inject belt_pulley (rotating shaft) as sub-model for start/end blocks
-      if (props.part === 'start' || props.part === 'end') {
+      // Inject belt_pulley (rotating shaft) as sub-model for start/end/pulley blocks
+      if (props.part === 'start' || props.part === 'end' || props.part === 'pulley') {
         let pulleyX = rotOverride.x;
         const pulleyY = (rotOverride.y ?? 0) + 90;
         if (props.slope !== 'vertical') {
@@ -766,6 +769,72 @@ export class CreateModLoader {
       def.multipart.push({ apply: { model: shaftModel, x: 90, y: 90 }, when: { axis: 'x' } });
       def.multipart.push({ apply: { model: shaftModel, x: 90 }, when: { axis: 'z' } });
     }
+  }
+
+  private patchGearboxDefinition (def: RawBlockState) {
+    if (!def.multipart) {
+      def.multipart = [];
+    }
+    if (def.variants) {
+      for (const [key, variant] of Object.entries(def.variants)) {
+        const when: Record<string, string> = {};
+        key.split(',').forEach(pair => {
+          const [k, v] = pair.split('=');
+          if (k && v) when[k] = v;
+        });
+        const entries = Array.isArray(variant) ? variant : [variant];
+        for (const entry of entries) {
+          def.multipart.push({ apply: entry, when: Object.keys(when).length ? when : undefined });
+        }
+      }
+      delete def.variants;
+    }
+
+    // Gearbox has two crossing shafts, each split into 2 halves (opposite rotation)
+    const half = 'create:block/shaft_half';
+    // axis=y: shafts along X and Z
+    def.multipart.push({ apply: { model: half }, when: { axis: 'y' } });             // Z+
+    def.multipart.push({ apply: { model: half, y: 180 }, when: { axis: 'y' } });    // Z-
+    def.multipart.push({ apply: { model: half, y: 90 }, when: { axis: 'y' } });     // X+
+    def.multipart.push({ apply: { model: half, y: 270 }, when: { axis: 'y' } });    // X-
+    // axis=x: shafts along Y and Z
+    def.multipart.push({ apply: { model: half }, when: { axis: 'x' } });             // Z+
+    def.multipart.push({ apply: { model: half, y: 180 }, when: { axis: 'x' } });    // Z-
+    def.multipart.push({ apply: { model: half, x: 90 }, when: { axis: 'x' } });     // Y-
+    def.multipart.push({ apply: { model: half, x: 270 }, when: { axis: 'x' } });    // Y+
+    // axis=z: shafts along X and Y
+    def.multipart.push({ apply: { model: half, y: 90 }, when: { axis: 'z' } });     // X+
+    def.multipart.push({ apply: { model: half, y: 270 }, when: { axis: 'z' } });    // X-
+    def.multipart.push({ apply: { model: half, x: 90 }, when: { axis: 'z' } });     // Y-
+    def.multipart.push({ apply: { model: half, x: 270 }, when: { axis: 'z' } });    // Y+
+  }
+
+  private patchCreativeMotorDefinition (def: RawBlockState) {
+    if (!def.multipart) {
+      def.multipart = [];
+    }
+    if (def.variants) {
+      for (const [key, variant] of Object.entries(def.variants)) {
+        const when: Record<string, string> = {};
+        key.split(',').forEach(pair => {
+          const [k, v] = pair.split('=');
+          if (k && v) when[k] = v;
+        });
+        const entries = Array.isArray(variant) ? variant : [variant];
+        for (const entry of entries) {
+          def.multipart.push({ apply: entry, when: Object.keys(when).length ? when : undefined });
+        }
+      }
+      delete def.variants;
+    }
+    // Creative motor: inject shaft_half in the facing direction
+    const half = 'create:block/shaft_half';
+    def.multipart.push({ apply: { model: half }, when: { facing: 'south' } });          // Z+
+    def.multipart.push({ apply: { model: half, y: 180 }, when: { facing: 'north' } }); // Z-
+    def.multipart.push({ apply: { model: half, y: 90 }, when: { facing: 'east' } });   // X+
+    def.multipart.push({ apply: { model: half, y: 270 }, when: { facing: 'west' } });  // X-
+    def.multipart.push({ apply: { model: half, x: 270 }, when: { facing: 'up' } });    // Y+
+    def.multipart.push({ apply: { model: half, x: 90 }, when: { facing: 'down' } });   // Y-
   }
 
   private patchEncasedPipeDefinition (def: RawBlockState) {

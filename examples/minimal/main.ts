@@ -29,8 +29,10 @@ const createSelect = document.getElementById('create-select') as HTMLSelectEleme
 const mcSelect = document.getElementById('minecraft-select') as HTMLSelectElement;
 const showGridCheckbox = document.getElementById('show-grid') as HTMLInputElement;
 const animateKineticsCheckbox = document.getElementById('animate-kinetics') as HTMLInputElement;
+const kineticRpmSlider = document.getElementById('kinetic-rpm') as HTMLInputElement;
+const kineticRpmLabel = document.getElementById('kinetic-rpm-label') as HTMLSpanElement;
 
-log(`DOM elements: canvas=${!!canvas} fileInput=${!!fileInput} statusEl=${!!statusEl} createSelect=${!!createSelect} mcSelect=${!!mcSelect} showGrid=${!!showGridCheckbox} kinetics=${!!animateKineticsCheckbox}`);
+log(`DOM elements: canvas=${!!canvas} fileInput=${!!fileInput} statusEl=${!!statusEl} createSelect=${!!createSelect} mcSelect=${!!mcSelect} showGrid=${!!showGridCheckbox} kinetics=${!!animateKineticsCheckbox} rpmSlider=${!!kineticRpmSlider}`);
 
 if (!canvas) {
   log('Canvas element #viewport not found', 'error');
@@ -209,6 +211,11 @@ if (!canvas) {
   });
   animateKineticsCheckbox.addEventListener('change', () => {
     if (viewer) viewer.setAnimateKinetics(animateKineticsCheckbox.checked);
+  });
+  kineticRpmSlider.addEventListener('input', () => {
+    const rpm = parseInt(kineticRpmSlider.value, 10);
+    kineticRpmLabel.textContent = `${rpm} RPM`;
+    if (viewer) viewer.setKineticRPM(rpm);
   });
 
   fileInput.addEventListener('change', async () => {

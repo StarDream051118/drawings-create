@@ -480,10 +480,17 @@ export function buildRenderPlan (
 }
 
 function inferMotion (id: string, model: string, props: Record<string, string | boolean | number | undefined>, variant: VariantLike): MotionSpec | null {
-  const axis = resolveAxis(props) ?? resolveAxisFromVariant(variant) ?? 'y';
   const lowered = model.toLowerCase();
   // Extract just the model file name (last part after /) to avoid matching parent dir names
   const modelName = lowered.split('/').pop() ?? '';
+
+  // Gearbox shafts: shaft_half geometry is along Z, use base='z' so variant rotation maps correctly
+  let axis: Axis = 'y';
+  if (id === 'create:gearbox' && modelName.includes('shaft')) {
+    axis = resolveAxisFromVariant(variant, 'z') ?? 'z';
+  } else {
+    axis = resolveAxis(props) ?? resolveAxisFromVariant(variant) ?? 'y';
+  }
 
   if (id.includes('mechanical_mixer') && modelName.includes('head')) {
     return { kind: 'spin', axis: 'y', speed: 0.02 };
@@ -519,7 +526,22 @@ function inferMotion (id: string, model: string, props: Record<string, string | 
   }
 
   if (spinTokens.some(k => modelName.includes(k))) {
-    return { kind: 'spin', axis, speed: 0.02 };
+    let speed = 0.02;
+    if (id === 'create:gearbox' && modelName.includes('shaft_half')) {
+      const vx = variant.x ?? 0;
+      const vy = variant.y ?? 0;
+      const blockAxis = (props['axis'] as string) ?? 'y';
+      const isNegativeHalf = (vy === 180 || vy === 270 || vx === 90);
+      speed = isNegativeHalf ? -0.02 : 0.02;
+      if (blockAxis === 'y' || blockAxis === 'x') {
+        speed = -speed;
+      } else if (blockAxis === 'z' && (vx === 90 || vx === 270)) {
+        speed = -speed;
+      }
+    } else if (id === 'create:creative_motor') {
+      speed = -0.02;
+    }
+    return { kind: 'spin', axis, speed };
   }
 
   return null;
@@ -560,18 +582,18 @@ function resolveAxis (props: Record<string, string | boolean | number | undefine
 }
 
 function resolveAxisFromVariant (variant: VariantLike, base: Axis = 'y'): Axis | null {
-  // Apply the same rotation order used for meshes to a unit vector aligned with the intended spin normal.
+  // Apply X rotation first, then Y — this correctly maps Y→Z (x:90) and Z→X (y:90)
   const radY = variant.y ? -glMatrix.toRadian(variant.y) : 0;
   const radX = variant.x ? -glMatrix.toRadian(variant.x) : 0;
   let v: [number, number, number] = base === 'x' ? [1, 0, 0] : base === 'z' ? [0, 0, 1] : [0, 1, 0];
 
-  if (radY !== 0) {
-    const cosY = Math.cos(radY), sinY = Math.sin(radY);
-    v = [(v[0] * cosY) + (v[2] * sinY), v[1], (-v[0] * sinY) + (v[2] * cosY)];
-  }
   if (radX !== 0) {
     const cosX = Math.cos(radX), sinX = Math.sin(radX);
     v = [v[0], (v[1] * cosX) - (v[2] * sinX), (v[1] * sinX) + (v[2] * cosX)];
+  }
+  if (radY !== 0) {
+    const cosY = Math.cos(radY), sinY = Math.sin(radY);
+    v = [(v[0] * cosY) + (v[2] * sinY), v[1], (-v[0] * sinY) + (v[2] * cosY)];
   }
 
   const ax = Math.abs(v[0]), ay = Math.abs(v[1]), az = Math.abs(v[2]);

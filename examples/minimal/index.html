@@ -66,6 +66,10 @@
     <label id="grid-toggle" style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;user-select:none">
       <input type="checkbox" id="show-grid" checked /> 网格
     </label>
+    <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;user-select:none">
+      <input type="range" id="kinetic-rpm" min="1" max="256" value="16" style="width:100px" />
+      <span id="kinetic-rpm-label">16 RPM</span>
+    </label>
     <input type="file" id="nbt-input" accept=".nbt,.litematic" />
     <span id="status">选择一个 NBT 或 Litematic 文件，支持 机械动力 蓝图</span>
   </header>

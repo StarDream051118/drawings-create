@@ -28,6 +28,8 @@ export type ViewerState = {
   pendingFrame: number;
   showGrid: boolean;
   animateKinetics: boolean;
+  kineticRPM: number;
+  lastFrameTime: number | null;
 };
 
 export function uploadMeshBuffers (gl: WebGLRenderingContext, mesh: Mesh) {
@@ -137,7 +139,9 @@ export function createStructureViewer (options: ViewerOptions) {
     pitch: 0,
     pendingFrame: 0,
     showGrid: true,
-    animateKinetics: true
+    animateKinetics: true,
+    kineticRPM: 16,
+    lastFrameTime: null
   };
 
   // Easing targets — current values smoothly interpolate toward these
@@ -210,8 +214,21 @@ export function createStructureViewer (options: ViewerOptions) {
     const aspect = (canvas.width || 1) / (canvas.height || 1);
     mat4.perspective(proj, glMatrix.toRadian(70), aspect, 0.1, 500);
 
+    // Compute frame delta for kinetic animations
+    let delta = 0;
+    if (state.animateKinetics) {
+      const now = performance.now();
+      delta = state.lastFrameTime ? (now - state.lastFrameTime) / 1000 : 1 / 60;
+      state.lastFrameTime = now;
+    } else {
+      state.lastFrameTime = null;
+    }
+
     for (const v of state.visuals) {
-      if (state.animateKinetics) v.update(1);
+      if (state.animateKinetics) {
+        const radiansPerSecond = state.kineticRPM * 2 * Math.PI / 60;
+        v.update(delta * radiansPerSecond / 0.02);
+      }
       v.beginFrame({ instancerProvider: () => state.flywheel!, partialTick: () => 0 });
     }
 
@@ -219,6 +236,10 @@ export function createStructureViewer (options: ViewerOptions) {
     state.renderer.drawStructure(view);
     state.flywheel.render(view, proj);
     drawCompass(state.yaw, state.pitch);
+
+    if (state.animateKinetics) {
+      requestRender();
+    }
   };
 
   const requestRender = () => {
@@ -421,7 +442,11 @@ export function createStructureViewer (options: ViewerOptions) {
     },
     setAnimateKinetics: (animate: boolean) => {
       state.animateKinetics = animate;
+      state.lastFrameTime = null;
       if (animate) requestRender();
+    },
+    setKineticRPM: (rpm: number) => {
+      state.kineticRPM = rpm;
     },
     dispose: () => {
       state.visuals = [];
