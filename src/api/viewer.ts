@@ -1,4 +1,5 @@
 import { glMatrix, mat4 } from 'gl-matrix';
+import { Identifier } from 'deepslate/core';
 import { Flywheel } from '../flywheel/flywheel';
 import { RotatingVisual } from '../flywheel/lib/visual/rotatingVisual';
 import { StaticVisual } from '../flywheel/lib/visual/staticVisual';
@@ -410,6 +411,24 @@ export function createStructureViewer (options: ViewerOptions) {
       const atlasTexture = state.renderer.atlasTexture;
       if (atlasTexture && state.flywheel) {
         state.flywheel.setTexture(atlasTexture);
+      }
+
+      try {
+        const beltImg = await assetsProvider.getTexture('textures/block/belt.png');
+        const beltTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, beltTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, beltImg);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        state.flywheel.setBeltTexture(beltTex);
+        const beltUv = resourcesBundle.resources.getTextureUV(Identifier.parse('create:block/belt'));
+        if (beltUv) {
+          state.flywheel.setBeltTexLimit(beltUv[0], beltUv[1], beltUv[2], beltUv[3]);
+        }
+      } catch (e) {
+        console.warn('belt_scroll texture not found', e);
       }
 
       state.visuals = [];

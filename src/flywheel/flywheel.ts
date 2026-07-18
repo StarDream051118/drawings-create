@@ -130,7 +130,6 @@ const VS_BELT_SCROLL = `
   attribute vec3 normal;
   attribute vec4 texLimit;
 
-  // Instance attributes (18 floats: 16 for mat4 + 2 for scroll)
   attribute vec4 iModelRow0;
   attribute vec4 iModelRow1;
   attribute vec4 iModelRow2;
@@ -144,7 +143,6 @@ const VS_BELT_SCROLL = `
   varying highp vec2 vScrollOffset;
   varying highp vec4 vTexLimit;
   varying highp float vLighting;
-  varying highp vec3 vWorldNormal;
 
   void main(void) {
     mat4 modelMatrix = mat4(iModelRow0, iModelRow1, iModelRow2, iModelRow3);
@@ -154,7 +152,6 @@ const VS_BELT_SCROLL = `
     vScrollOffset = iScrollOffset;
     vTexLimit = texLimit;
     vec3 worldNormal = mat3(modelMatrix) * normal;
-    vWorldNormal = worldNormal;
     vLighting = worldNormal.y * 0.2 + abs(worldNormal.z) * 0.1 + 0.8;
   }
 `;
@@ -165,25 +162,15 @@ const FS_BELT_SCROLL = `
   varying highp vec2 vScrollOffset;
   varying highp vec4 vTexLimit;
   varying highp float vLighting;
-  varying highp vec3 vWorldNormal;
 
-  uniform sampler2D sampler;
+  uniform sampler2D beltSampler;
+  uniform vec4 beltTexLimit;
 
   void main(void) {
-    vec2 range = vTexLimit.zw - vTexLimit.xy;
-    vec2 beltUV = (vTexCoord - vTexLimit.xy) / range + vScrollOffset.xy;
-
-    // belt_scroll atlas: top half = belt surface, bottom half = belt edge
-    if (vWorldNormal.y > 0.5) {
-      // Top face: belt surface, wrap at half-tile boundary
-      beltUV.y = fract(beltUV.y * 2.0) * 0.5;
-    } else {
-      // Side face: belt edge, remap [0,1] → [0.5, 1]
-      beltUV.y = 0.5 + fract(beltUV.y) * 0.5;
-    }
-
-    vec2 atlasUV = vTexLimit.xy + beltUV * range;
-    vec4 texColor = texture2D(sampler, atlasUV);
+    // Normalize using the FULL belt texture's atlas range (not per-face texLimit)
+    vec2 beltRange = beltTexLimit.zw - beltTexLimit.xy;
+    vec2 beltUV = (vTexCoord - beltTexLimit.xy) / beltRange + vScrollOffset.xy;
+    vec4 texColor = texture2D(beltSampler, beltUV);
     if (texColor.a < 0.1) discard;
     gl_FragColor = vec4(texColor.xyz * vLighting, texColor.a);
   }
@@ -197,6 +184,8 @@ export class Flywheel implements InstancerProvider {
   private readonly beltScrollShader: ShaderProgram;
   private readonly ext: ANGLE_instanced_arrays | null = null;
   private texture: WebGLTexture | null = null;
+  private beltTexture: WebGLTexture | null = null;
+  private beltTexLimit: [number, number, number, number] = [0, 0, 1, 1];
 
   constructor (private readonly gl: WebGLRenderingContext) {
     this.shader = new ShaderProgram(gl, VS_TRANSFORMED, FS_TRANSFORMED);
@@ -208,6 +197,14 @@ export class Flywheel implements InstancerProvider {
 
   setTexture (texture: WebGLTexture) {
     this.texture = texture;
+  }
+
+  setBeltTexture (texture: WebGLTexture) {
+    this.beltTexture = texture;
+  }
+
+  setBeltTexLimit (u0: number, v0: number, u1: number, v1: number) {
+    this.beltTexLimit = [u0, v0, u1, v1];
   }
 
   instancer<D extends Instance>(type: InstanceType<D>, model: unknown): Instancer<D> {
@@ -321,11 +318,15 @@ export class Flywheel implements InstancerProvider {
         gl.uniformMatrix4fv(locView, false, viewMatrix);
         gl.uniformMatrix4fv(locProj, false, projMatrix);
 
-        if (this.texture) {
-          gl.activeTexture(gl.TEXTURE0);
-          gl.bindTexture(gl.TEXTURE_2D, this.texture);
-          const locSampler = gl.getUniformLocation(program, 'sampler');
-          gl.uniform1i(locSampler, 0);
+        if (this.beltTexture) {
+          gl.activeTexture(gl.TEXTURE1);
+          gl.bindTexture(gl.TEXTURE_2D, this.beltTexture);
+          const locBeltSampler = gl.getUniformLocation(program, 'beltSampler');
+          gl.uniform1i(locBeltSampler, 1);
+        }
+        {
+          const locBeltTL = gl.getUniformLocation(program, 'beltTexLimit');
+          if (locBeltTL) gl.uniform4f(locBeltTL, this.beltTexLimit[0], this.beltTexLimit[1], this.beltTexLimit[2], this.beltTexLimit[3]);
         }
 
         const locVert = gl.getAttribLocation(program, 'vertPos');

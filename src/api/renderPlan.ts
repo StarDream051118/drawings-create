@@ -486,15 +486,18 @@ function inferMotion (id: string, model: string, props: Record<string, string | 
 
   // Belt surface models: scroll UV animation (not pulley/casing/funnel/tunnel/particle)
   const beltScrollTokens = ['belt/middle', 'belt/start', 'belt/end'];
-  const excludedBeltTokens = ['belt_pulley', 'belt_casing', 'belt_funnel', 'belt_tunnel', 'particle'];
+  const excludedBeltTokens = ['belt_casing', 'belt_funnel', 'belt_tunnel', 'particle'];
   if (beltScrollTokens.some(k => lowered.includes(k)) && !excludedBeltTokens.some(k => lowered.includes(k))) {
-    return { kind: 'scroll', axis: 'y', speed: 0.004 };
+    return { kind: 'scroll', axis: 'y', speed: 0.01 };
   }
 
   // Gearbox shafts: shaft_half geometry is along Z, use base='z' so variant rotation maps correctly
   let axis: Axis = 'y';
   if (id === 'create:gearbox' && modelName.includes('shaft')) {
     axis = resolveAxisFromVariant(variant, 'z') ?? 'z';
+  } else if (lowered.includes('belt_pulley')) {
+    // Belt pulley: spin axis from variant (perpendicular to belt direction)
+    axis = resolveAxisFromVariant(variant, 'y') ?? 'y';
   } else {
     axis = resolveAxis(props) ?? resolveAxisFromVariant(variant) ?? 'y';
   }
@@ -523,7 +526,8 @@ function inferMotion (id: string, model: string, props: Record<string, string | 
     'flywheel',
     'pump/cog',
     'mechanical_crafter/gears',
-    'mechanical_arm/cog'
+    'mechanical_arm/cog',
+    'pulley'
   ];
 
   // Exclude when model clearly refers to press/deployer/saw heads or poles
