@@ -463,6 +463,29 @@ export function createStructureViewer (options: ViewerOptions) {
         console.warn('[belt] belt diagonal scroll texture not found', e);
       }
 
+      try {
+        console.log('[belt] loading belt_offset.png ...');
+        const beltBottomImg = await assetsProvider.getTexture('textures/block/belt_offset.png');
+        console.log('[belt] belt_offset.png loaded:', beltBottomImg?.width, '×', beltBottomImg?.height);
+        const beltBottomTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, beltBottomTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, beltBottomImg);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        state.flywheel.setBeltBottomTexture(beltBottomTex);
+        const beltBottomUv = resourcesBundle.resources.getTextureUV(Identifier.parse('create:block/belt_offset'));
+        console.log('[belt] atlas UV for create:block/belt_offset:', beltBottomUv);
+        if (beltBottomUv) {
+          state.flywheel.setBeltBottomTexLimitBase(beltBottomUv[0], beltBottomUv[1], beltBottomUv[2], beltBottomUv[3]);
+          state.flywheel.setBeltBottomUV(0, 0, 1, 1);
+        }
+        console.log('[belt] bottom belt texture setup done');
+      } catch (e) {
+        console.warn('[belt] belt offset texture not found', e);
+      }
+
       state.visuals = [];
       for (const block of renderPlan.blocks) {
         for (const part of block.parts) {

@@ -203,6 +203,9 @@ export class Flywheel implements InstancerProvider {
   private beltTexLimit: [number, number, number, number] = [0, 0, 1, 1];
   private beltDiagonalTexLimit: [number, number, number, number] = [0, 0, 1, 1];
   private beltDiagonalTexLimitBase: [number, number, number, number] = [0, 0, 1, 1];
+  private beltBottomTexture: WebGLTexture | null = null;
+  private beltBottomTexLimit: [number, number, number, number] = [0, 0, 1, 1];
+  private beltBottomTexLimitBase: [number, number, number, number] = [0, 0, 1, 1];
 
   constructor (private readonly gl: WebGL2RenderingContext) {
     this.shader = new ShaderProgram(gl, VS_TRANSFORMED, FS_TRANSFORMED);
@@ -222,6 +225,10 @@ export class Flywheel implements InstancerProvider {
 
   setBeltDiagonalTexture (texture: WebGLTexture) {
     this.beltDiagonalTexture = texture;
+  }
+
+  setBeltBottomTexture (texture: WebGLTexture) {
+    this.beltBottomTexture = texture;
   }
 
   setBeltTexLimit (u0: number, v0: number, u1: number, v1: number) {
@@ -249,6 +256,23 @@ export class Flywheel implements InstancerProvider {
     const sx = bx1 - bx0;
     const sy = by1 - by0;
     this.beltDiagonalTexLimit = [
+      bx0 + sx * u0,
+      by0 + sy * v0,
+      bx0 + sx * u1,
+      by0 + sy * v1,
+    ];
+  }
+
+  setBeltBottomTexLimitBase (u0: number, v0: number, u1: number, v1: number) {
+    this.beltBottomTexLimitBase = [u0, v0, u1, v1];
+    this.beltBottomTexLimit = [u0, v0, u1, v1];
+  }
+
+  setBeltBottomUV (u0: number, v0: number, u1: number, v1: number) {
+    const [bx0, by0, bx1, by1] = this.beltBottomTexLimitBase;
+    const sx = bx1 - bx0;
+    const sy = by1 - by0;
+    this.beltBottomTexLimit = [
       bx0 + sx * u0,
       by0 + sy * v0,
       bx0 + sx * u1,
@@ -356,6 +380,7 @@ export class Flywheel implements InstancerProvider {
         // Draw textured quads with belt_scroll texture (GL_REPEAT)
         const modelId = (model as { id?: string }).id ?? '';
         const isDiagonal = modelId.includes('diagonal');
+        const isBottom = !isDiagonal && modelId.includes('_bottom');
 
         const program = (isDiagonal ? this.beltDiagonalScrollShader : this.beltScrollShader).getProgram();
         gl.useProgram(program);
@@ -374,6 +399,17 @@ export class Flywheel implements InstancerProvider {
           {
             const locTL = gl.getUniformLocation(program, 'beltDiagonalTexLimit');
             if (locTL) gl.uniform4f(locTL, this.beltDiagonalTexLimit[0], this.beltDiagonalTexLimit[1], this.beltDiagonalTexLimit[2], this.beltDiagonalTexLimit[3]);
+          }
+        } else if (isBottom) {
+          if (this.beltBottomTexture) {
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_2D, this.beltBottomTexture);
+            const locBeltSampler = gl.getUniformLocation(program, 'beltSampler');
+            gl.uniform1i(locBeltSampler, 1);
+          }
+          {
+            const locTL = gl.getUniformLocation(program, 'beltTexLimit');
+            if (locTL) gl.uniform4f(locTL, this.beltBottomTexLimit[0], this.beltBottomTexLimit[1], this.beltBottomTexLimit[2], this.beltBottomTexLimit[3]);
           }
         } else {
           if (this.beltTexture) {
