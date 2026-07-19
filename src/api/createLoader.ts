@@ -658,14 +658,18 @@ export class CreateModLoader {
         } else if (props.part === 'start') {
           // Swap start/end for specific diagonal directions
           const swappedStart = (props.facing === 'east' && props.slope === 'downward') ||
-                               (props.facing === 'north' && props.slope === 'downward');
+                               (props.facing === 'north' && props.slope === 'downward') ||
+                               (props.facing === 'west' && props.slope === 'downward') ||
+                               (props.facing === 'south' && props.slope === 'downward');
           models.push(swappedStart ? 'create:block/belt/diagonal_end' : 'create:block/belt/diagonal_start');
           if (props.casing === 'true') {
             models.push(swappedStart ? 'create:block/belt_casing/diagonal_end' : 'create:block/belt_casing/diagonal_start');
           }
         } else if (props.part === 'end') {
           const swappedEnd = (props.facing === 'east' && props.slope === 'downward') ||
-                             (props.facing === 'north' && props.slope === 'downward');
+                             (props.facing === 'north' && props.slope === 'downward') ||
+                             (props.facing === 'west' && props.slope === 'downward') ||
+                             (props.facing === 'south' && props.slope === 'downward');
           models.push(swappedEnd ? 'create:block/belt/diagonal_start' : 'create:block/belt/diagonal_end');
           if (props.casing === 'true') {
             models.push(swappedEnd ? 'create:block/belt_casing/diagonal_start' : 'create:block/belt_casing/diagonal_end');
@@ -692,6 +696,12 @@ export class CreateModLoader {
         }
         if (props.facing === 'east' && props.slope === 'upward') {
           rotOverride = { x: original.x, y: 90 };
+        }
+        if (props.facing === 'west' && props.slope === 'downward') {
+          rotOverride = { x: original.x, y: 90 };
+        }
+        if (props.facing === 'west' && props.slope === 'upward') {
+          rotOverride = { x: original.x, y: 270 };
         }
       }
 
@@ -831,14 +841,14 @@ export class CreateModLoader {
       }
       delete def.variants;
     }
-    // Creative motor: inject shaft_half in the facing direction
+    // Creative motor: inject shaft_half — north/south 原本正确，east/west/up/down 改为对向
     const half = 'create:block/shaft_half';
-    def.multipart.push({ apply: { model: half }, when: { facing: 'south' } });          // Z+
-    def.multipart.push({ apply: { model: half, y: 180 }, when: { facing: 'north' } }); // Z-
-    def.multipart.push({ apply: { model: half, y: 90 }, when: { facing: 'east' } });   // X+
-    def.multipart.push({ apply: { model: half, y: 270 }, when: { facing: 'west' } });  // X-
-    def.multipart.push({ apply: { model: half, x: 270 }, when: { facing: 'up' } });    // Y+
-    def.multipart.push({ apply: { model: half, x: 90 }, when: { facing: 'down' } });   // Y-
+    def.multipart.push({ apply: { model: half }, when: { facing: 'south' } });            // Z+
+    def.multipart.push({ apply: { model: half, y: 180 }, when: { facing: 'north' } });   // Z-
+    def.multipart.push({ apply: { model: half, y: 270 }, when: { facing: 'east' } });    // X-（对向）
+    def.multipart.push({ apply: { model: half, y: 90 }, when: { facing: 'west' } });     // X+（对向）
+    def.multipart.push({ apply: { model: half, x: 90 }, when: { facing: 'up' } });      // Y-（对向）
+    def.multipart.push({ apply: { model: half, x: 270 }, when: { facing: 'down' } });    // Y+（对向）
   }
 
   private patchEncasedPipeDefinition (def: RawBlockState) {

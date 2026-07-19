@@ -17,7 +17,7 @@ export const SPIN_SPEED = 0.02;
 
 // ─── 日志开关（true 输出，false 静默）──────────────────────
 /** 方块模型引用日志：方块名 + variant 模型路径 */
-export const LOG_MODEL_REFS = false;
+export const LOG_MODEL_REFS = true;
 /** 方块模型 UV 截取日志：quad UV 坐标 + texLimit */
 export const LOG_UV = false;
 /** 方块纹理引用日志：各面引用的纹理 */
@@ -567,9 +567,13 @@ function inferMotion (id: string, model: string, props: Record<string, string | 
   const excludedBeltTokens = ['belt_casing', 'belt_funnel', 'belt_tunnel', 'particle'];
   if (beltScrollTokens.some(k => lowered.includes(k)) && !excludedBeltTokens.some(k => lowered.includes(k))) {
     if (lowered.includes('diagonal')) {
-      // Diagonal: direction by slope (downward=negative, upward=positive)
+      // Diagonal: direction by slope + facing
       const slope = props['slope'] as string | undefined;
-      return { kind: 'scroll', axis: 'y', speed: slope === 'downward' ? -DIAGONAL_BELT_SCROLL_SPEED : DIAGONAL_BELT_SCROLL_SPEED };
+      const facing = props['facing'] as string | undefined;
+      const slopeDir = slope === 'downward' ? -1 : 1;
+      // west/south 的 UV 方向与 east/north 相反
+      const facingFlip = (facing === 'west' || facing === 'south') ? -1 : 1;
+      return { kind: 'scroll', axis: 'y', speed: DIAGONAL_BELT_SCROLL_SPEED * slopeDir * facingFlip };
     }
     // Horizontal: UV+ moves opposite direction; north/east need negative speed
     const facing = props['facing'] as string | undefined;
