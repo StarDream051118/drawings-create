@@ -197,7 +197,6 @@ export class Flywheel implements InstancerProvider {
   private readonly colorShader: ShaderProgram;
   private readonly beltScrollShader: ShaderProgram;
   private readonly beltDiagonalScrollShader: ShaderProgram;
-  private readonly ext: ANGLE_instanced_arrays | null = null;
   private texture: WebGLTexture | null = null;
   private beltTexture: WebGLTexture | null = null;
   private beltDiagonalTexture: WebGLTexture | null = null;
@@ -205,13 +204,12 @@ export class Flywheel implements InstancerProvider {
   private beltDiagonalTexLimit: [number, number, number, number] = [0, 0, 1, 1];
   private beltDiagonalTexLimitBase: [number, number, number, number] = [0, 0, 1, 1];
 
-  constructor (private readonly gl: WebGLRenderingContext) {
+  constructor (private readonly gl: WebGL2RenderingContext) {
     this.shader = new ShaderProgram(gl, VS_TRANSFORMED, FS_TRANSFORMED);
     this.lineShader = new ShaderProgram(gl, VS_LINES, FS_LINES);
     this.colorShader = new ShaderProgram(gl, VS_COLOR, FS_COLOR);
     this.beltScrollShader = new ShaderProgram(gl, VS_BELT_SCROLL, FS_BELT_SCROLL);
     this.beltDiagonalScrollShader = new ShaderProgram(gl, VS_BELT_SCROLL, FS_BELT_DIAGONAL_SCROLL);
-    this.ext = gl.getExtension('ANGLE_instanced_arrays');
   }
 
   setTexture (texture: WebGLTexture) {
@@ -275,10 +273,6 @@ export class Flywheel implements InstancerProvider {
   }
 
   render (viewMatrix: mat4, projMatrix: mat4) {
-    if (!this.ext) {
-      return;
-    }
-
     const gl = this.gl;
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -299,18 +293,16 @@ export class Flywheel implements InstancerProvider {
       gl.vertexAttribPointer(loc2, 4, gl.FLOAT, false, stride, 32);
       gl.vertexAttribPointer(loc3, 4, gl.FLOAT, false, stride, 48);
 
-      if (this.ext) {
-        this.ext.vertexAttribDivisorANGLE(loc0, 1);
-        this.ext.vertexAttribDivisorANGLE(loc1, 1);
-        this.ext.vertexAttribDivisorANGLE(loc2, 1);
-        this.ext.vertexAttribDivisorANGLE(loc3, 1);
-      }
+      gl.vertexAttribDivisor(loc0, 1);
+      gl.vertexAttribDivisor(loc1, 1);
+      gl.vertexAttribDivisor(loc2, 1);
+      gl.vertexAttribDivisor(loc3, 1);
 
       return [loc0, loc1, loc2, loc3];
     };
 
     const unbindInstanceAttrs = (locs: number[]) => {
-      locs.forEach(loc => this.ext!.vertexAttribDivisorANGLE(loc, 0));
+      locs.forEach(loc => gl.vertexAttribDivisor(loc, 0));
     };
 
     for (const instancer of this.instancers.values()) {
@@ -352,7 +344,7 @@ export class Flywheel implements InstancerProvider {
 
         instancer.glBuffer.bind(gl.ARRAY_BUFFER);
         const locs = bindInstanceAttrs(program);
-        this.ext.drawElementsInstancedANGLE(
+        gl.drawElementsInstanced(
           gl.TRIANGLES,
           model.quadIndices(),
           gl.UNSIGNED_SHORT,
@@ -426,9 +418,9 @@ export class Flywheel implements InstancerProvider {
         const locScroll = gl.getAttribLocation(program, 'iScrollOffset');
         gl.enableVertexAttribArray(locScroll);
         gl.vertexAttribPointer(locScroll, 2, gl.FLOAT, false, 72, 64);
-        if (this.ext) this.ext.vertexAttribDivisorANGLE(locScroll, 1);
+        gl.vertexAttribDivisor(locScroll, 1);
 
-        this.ext.drawElementsInstancedANGLE(
+        gl.drawElementsInstanced(
           gl.TRIANGLES,
           model.quadIndices(),
           gl.UNSIGNED_SHORT,
@@ -436,7 +428,7 @@ export class Flywheel implements InstancerProvider {
           instancer.instanceCount
         );
 
-        if (this.ext) this.ext.vertexAttribDivisorANGLE(locScroll, 0);
+        gl.vertexAttribDivisor(locScroll, 0);
         unbindInstanceAttrs(scrollLocs);
       } else if (model.quadVertices() > 0 && model.posBuffer && model.textureBuffer && model.normalBuffer && model.indexBuffer) {
         // Draw textured quads
@@ -474,7 +466,7 @@ export class Flywheel implements InstancerProvider {
 
         instancer.glBuffer.bind(gl.ARRAY_BUFFER);
         const locs = bindInstanceAttrs(program);
-        this.ext.drawElementsInstancedANGLE(
+        gl.drawElementsInstanced(
           gl.TRIANGLES,
           model.quadIndices(),
           gl.UNSIGNED_SHORT,
@@ -508,7 +500,7 @@ export class Flywheel implements InstancerProvider {
         const locs = bindInstanceAttrs(program);
         const width = model.lineWidth ?? 1;
         gl.lineWidth(width);
-        this.ext.drawArraysInstancedANGLE(
+        gl.drawArraysInstanced(
           gl.LINES,
           0,
           model.lineVertices(),

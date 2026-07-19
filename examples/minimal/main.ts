@@ -40,11 +40,11 @@ if (!canvas) {
 } else {
   log(`Canvas found: ${canvas.clientWidth}x${canvas.clientHeight}`);
 
-  const gl = canvas.getContext('webgl');
+  const gl = canvas.getContext('webgl2');
   if (!gl) {
-    log('WebGL not supported in this browser', 'error');
+    log('WebGL 2 not supported in this browser', 'error');
   } else {
-    log(`WebGL OK: ${gl.getParameter(gl.RENDERER)}`);
+    log(`WebGL 2 OK: ${gl.getParameter(gl.RENDERER)}`);
   }
 
   let viewer: ReturnType<typeof createStructureViewer> | null = null;

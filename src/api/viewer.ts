@@ -129,10 +129,11 @@ export type ViewerOptions = {
 
 export function createStructureViewer (options: ViewerOptions) {
   const { canvas } = options;
-  const gl = canvas.getContext('webgl');
+  const gl = canvas.getContext('webgl2');
   if (!gl) {
-    throw new Error('WebGL not supported');
+    throw new Error('WebGL 2 not supported');
   }
+  console.log('[viewer] WebGL 2 context created');
 
   const observer = options.observer ?? new LimestoneObserver();
   const planBuilder = options.renderPlanBuilder ?? buildRenderPlan;
@@ -440,15 +441,11 @@ export function createStructureViewer (options: ViewerOptions) {
         const w = beltDiagonalImg?.width ?? 0;
         const h = beltDiagonalImg?.height ?? 0;
         console.log('[belt] belt_diagonal_scroll.png loaded:', w, '×', h);
-        const isPOT = (w & (w - 1)) === 0 && (h & (h - 1)) === 0;
-        if (!isPOT) {
-          console.warn(`[belt] NPOT texture (${w}×${h}): WebGL 1.0 不允许 REPEAT，自动降级为 CLAMP_TO_EDGE`);
-        }
         const beltDiagonalTex = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, beltDiagonalTex);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, beltDiagonalImg);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, isPOT ? gl.REPEAT : gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, isPOT ? gl.REPEAT : gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         state.flywheel.setBeltDiagonalTexture(beltDiagonalTex);
@@ -459,7 +456,7 @@ export function createStructureViewer (options: ViewerOptions) {
         if (beltDiagonalUv) {
           state.flywheel.setBeltDiagonalTexLimitBase(beltDiagonalUv[0], beltDiagonalUv[1], beltDiagonalUv[2], beltDiagonalUv[3]);
           console.log('[belt] setBeltDiagonalUV(0, 0, 1, 1)');
-          state.flywheel.setBeltDiagonalUV(0, 0, 1, 1.75);
+          state.flywheel.setBeltDiagonalUV(0, 0, 1, 1.5);
         }
         console.log('[belt] diagonal belt texture setup done');
       } catch (e) {
