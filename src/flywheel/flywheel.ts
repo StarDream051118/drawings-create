@@ -173,22 +173,44 @@ const FS_BELT_SCROLL = `
   }
 `;
 
+const FS_BELT_DIAGONAL_SCROLL = `
+  precision highp float;
+  varying highp vec2 vTexCoord;
+  varying highp vec2 vScrollOffset;
+  varying highp float vLighting;
+
+  uniform sampler2D beltDiagonalSampler;
+  uniform vec4 beltDiagonalTexLimit;
+
+  void main(void) {
+    vec2 beltUV = (vTexCoord - beltDiagonalTexLimit.xy) / (beltDiagonalTexLimit.zw - beltDiagonalTexLimit.xy) + vScrollOffset.xy;
+    vec4 texColor = texture2D(beltDiagonalSampler, beltUV);
+    if (texColor.a < 0.1) discard;
+    gl_FragColor = vec4(texColor.xyz * vLighting, texColor.a);
+  }
+`;
+
 export class Flywheel implements InstancerProvider {
   private readonly instancers: Map<string, InstancerImpl<Instance>> = new Map();
   private readonly shader: ShaderProgram;
   private readonly lineShader: ShaderProgram;
   private readonly colorShader: ShaderProgram;
   private readonly beltScrollShader: ShaderProgram;
+  private readonly beltDiagonalScrollShader: ShaderProgram;
   private readonly ext: ANGLE_instanced_arrays | null = null;
   private texture: WebGLTexture | null = null;
   private beltTexture: WebGLTexture | null = null;
+  private beltDiagonalTexture: WebGLTexture | null = null;
   private beltTexLimit: [number, number, number, number] = [0, 0, 1, 1];
+  private beltDiagonalTexLimit: [number, number, number, number] = [0, 0, 1, 1];
+  private beltDiagonalTexLimitBase: [number, number, number, number] = [0, 0, 1, 1];
 
   constructor (private readonly gl: WebGLRenderingContext) {
     this.shader = new ShaderProgram(gl, VS_TRANSFORMED, FS_TRANSFORMED);
     this.lineShader = new ShaderProgram(gl, VS_LINES, FS_LINES);
     this.colorShader = new ShaderProgram(gl, VS_COLOR, FS_COLOR);
     this.beltScrollShader = new ShaderProgram(gl, VS_BELT_SCROLL, FS_BELT_SCROLL);
+    this.beltDiagonalScrollShader = new ShaderProgram(gl, VS_BELT_SCROLL, FS_BELT_DIAGONAL_SCROLL);
     this.ext = gl.getExtension('ANGLE_instanced_arrays');
   }
 
@@ -200,8 +222,40 @@ export class Flywheel implements InstancerProvider {
     this.beltTexture = texture;
   }
 
+  setBeltDiagonalTexture (texture: WebGLTexture) {
+    this.beltDiagonalTexture = texture;
+  }
+
   setBeltTexLimit (u0: number, v0: number, u1: number, v1: number) {
     this.beltTexLimit = [u0, v0, u1, v1];
+  }
+
+  setBeltDiagonalTexLimit (u0: number, v0: number, u1: number, v1: number) {
+    this.beltDiagonalTexLimit = [u0, v0, u1, v1];
+  }
+
+  /** 设置 create:block/belt_diagonal_scroll 在图集中的基准包围盒（只调用一次） */
+  setBeltDiagonalTexLimitBase (u0: number, v0: number, u1: number, v1: number) {
+    this.beltDiagonalTexLimitBase = [u0, v0, u1, v1];
+    this.beltDiagonalTexLimit = [u0, v0, u1, v1];
+  }
+
+  /**
+   * 按 belt_diagonal_scroll.png 自身的 [0,1] 纹理 UV 来设置截取范围
+   * @example
+   *   flywheel.setBeltDiagonalUV(0, 0, 1, 1);        // 整张纹理
+   *   flywheel.setBeltDiagonalUV(0.25, 0.25, 0.75, 0.75); // 中心 50%
+   */
+  setBeltDiagonalUV (u0: number, v0: number, u1: number, v1: number) {
+    const [bx0, by0, bx1, by1] = this.beltDiagonalTexLimitBase;
+    const sx = bx1 - bx0;
+    const sy = by1 - by0;
+    this.beltDiagonalTexLimit = [
+      bx0 + sx * u0,
+      by0 + sy * v0,
+      bx0 + sx * u1,
+      by0 + sy * v1,
+    ];
   }
 
   instancer<D extends Instance>(type: InstanceType<D>, model: unknown): Instancer<D> {
@@ -308,22 +362,38 @@ export class Flywheel implements InstancerProvider {
         unbindInstanceAttrs(locs);
       } else if (isScrollFormat && model.quadVertices() > 0 && model.posBuffer && model.textureBuffer && model.normalBuffer && model.indexBuffer) {
         // Draw textured quads with belt_scroll texture (GL_REPEAT)
-        const program = this.beltScrollShader.getProgram();
+        const modelId = (model as { id?: string }).id ?? '';
+        const isDiagonal = modelId.includes('diagonal');
+
+        const program = (isDiagonal ? this.beltDiagonalScrollShader : this.beltScrollShader).getProgram();
         gl.useProgram(program);
         const locView = gl.getUniformLocation(program, 'mView');
         const locProj = gl.getUniformLocation(program, 'mProj');
         gl.uniformMatrix4fv(locView, false, viewMatrix);
         gl.uniformMatrix4fv(locProj, false, projMatrix);
 
-        if (this.beltTexture) {
-          gl.activeTexture(gl.TEXTURE1);
-          gl.bindTexture(gl.TEXTURE_2D, this.beltTexture);
-          const locBeltSampler = gl.getUniformLocation(program, 'beltSampler');
-          gl.uniform1i(locBeltSampler, 1);
-        }
-        {
-          const locBeltTL = gl.getUniformLocation(program, 'beltTexLimit');
-          if (locBeltTL) gl.uniform4f(locBeltTL, this.beltTexLimit[0], this.beltTexLimit[1], this.beltTexLimit[2], this.beltTexLimit[3]);
+        if (isDiagonal) {
+          if (this.beltDiagonalTexture) {
+            gl.activeTexture(gl.TEXTURE2);
+            gl.bindTexture(gl.TEXTURE_2D, this.beltDiagonalTexture);
+            const locSampler = gl.getUniformLocation(program, 'beltDiagonalSampler');
+            gl.uniform1i(locSampler, 2);
+          }
+          {
+            const locTL = gl.getUniformLocation(program, 'beltDiagonalTexLimit');
+            if (locTL) gl.uniform4f(locTL, this.beltDiagonalTexLimit[0], this.beltDiagonalTexLimit[1], this.beltDiagonalTexLimit[2], this.beltDiagonalTexLimit[3]);
+          }
+        } else {
+          if (this.beltTexture) {
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_2D, this.beltTexture);
+            const locBeltSampler = gl.getUniformLocation(program, 'beltSampler');
+            gl.uniform1i(locBeltSampler, 1);
+          }
+          {
+            const locBeltTL = gl.getUniformLocation(program, 'beltTexLimit');
+            if (locBeltTL) gl.uniform4f(locBeltTL, this.beltTexLimit[0], this.beltTexLimit[1], this.beltTexLimit[2], this.beltTexLimit[3]);
+          }
         }
 
         const locVert = gl.getAttribLocation(program, 'vertPos');

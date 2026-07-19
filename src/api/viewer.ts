@@ -414,7 +414,9 @@ export function createStructureViewer (options: ViewerOptions) {
       }
 
       try {
+        console.log('[belt] loading belt.png ...');
         const beltImg = await assetsProvider.getTexture('textures/block/belt.png');
+        console.log('[belt] belt.png loaded:', beltImg?.width, '×', beltImg?.height);
         const beltTex = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, beltTex);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, beltImg);
@@ -424,11 +426,44 @@ export function createStructureViewer (options: ViewerOptions) {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         state.flywheel.setBeltTexture(beltTex);
         const beltUv = resourcesBundle.resources.getTextureUV(Identifier.parse('create:block/belt'));
+        console.log('[belt] atlas UV for create:block/belt:', beltUv);
         if (beltUv) {
           state.flywheel.setBeltTexLimit(beltUv[0], beltUv[1], beltUv[2], beltUv[3]);
         }
       } catch (e) {
-        console.warn('belt texture not found', e);
+        console.warn('[belt] belt texture not found', e);
+      }
+
+      try {
+        console.log('[belt] loading belt_diagonal_scroll.png ...');
+        const beltDiagonalImg = await assetsProvider.getTexture('textures/block/belt_diagonal_scroll.png');
+        const w = beltDiagonalImg?.width ?? 0;
+        const h = beltDiagonalImg?.height ?? 0;
+        console.log('[belt] belt_diagonal_scroll.png loaded:', w, '×', h);
+        const isPOT = (w & (w - 1)) === 0 && (h & (h - 1)) === 0;
+        if (!isPOT) {
+          console.warn(`[belt] NPOT texture (${w}×${h}): WebGL 1.0 不允许 REPEAT，自动降级为 CLAMP_TO_EDGE`);
+        }
+        const beltDiagonalTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, beltDiagonalTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, beltDiagonalImg);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, isPOT ? gl.REPEAT : gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, isPOT ? gl.REPEAT : gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        state.flywheel.setBeltDiagonalTexture(beltDiagonalTex);
+        // 使用 create:block/belt_diagonal_scroll 在图集中的 UV 包围盒做归一化
+        // 顶点 UV 在图集空间，归一化得到 [0,1] 后采样独立加载的 belt_diagonal_scroll.png，完全脱离 atlas
+        const beltDiagonalUv = resourcesBundle.resources.getTextureUV(Identifier.parse('create:block/belt_diagonal_scroll'));
+        console.log('[belt] atlas UV for create:block/belt_diagonal_scroll:', beltDiagonalUv);
+        if (beltDiagonalUv) {
+          state.flywheel.setBeltDiagonalTexLimitBase(beltDiagonalUv[0], beltDiagonalUv[1], beltDiagonalUv[2], beltDiagonalUv[3]);
+          console.log('[belt] setBeltDiagonalUV(0, 0, 1, 1)');
+          state.flywheel.setBeltDiagonalUV(0, 0, 1, 1.75);
+        }
+        console.log('[belt] diagonal belt texture setup done');
+      } catch (e) {
+        console.warn('[belt] belt diagonal scroll texture not found', e);
       }
 
       state.visuals = [];
