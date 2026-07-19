@@ -8,6 +8,21 @@ import { BlockColors } from 'deepslate/render';
 import type { Mesh, Cull } from 'deepslate/render';
 import type { ExtendedMesh, VariantLike } from '../types/assets';
 
+/** 对角 Belt UV 滚动速度（每 tick） */
+export const DIAGONAL_BELT_SCROLL_SPEED = 0.004;
+/** 水平 Belt UV 滚动速度（每 tick） */
+export const HORIZONTAL_BELT_SCROLL_SPEED = 0.008;
+/** 齿轮/传动杆旋转速度（每 tick，弧度） */
+export const SPIN_SPEED = 0.02;
+
+// ─── 日志开关（true 输出，false 静默）──────────────────────
+/** 方块模型引用日志：方块名 + variant 模型路径 */
+export const LOG_MODEL_REFS = true;
+/** 方块模型 UV 截取日志：quad UV 坐标 + texLimit */
+export const LOG_UV = false;
+/** 方块纹理引用日志：各面引用的纹理 */
+export const LOG_TEXTURES = false;
+
 export type Axis = 'x' | 'y' | 'z';
 export interface MotionSpec {
   kind: 'spin' | 'scroll';
@@ -263,7 +278,6 @@ export function buildRenderPlan (
   for (const block of blocks) {
     const id = block.state.getName().toString();
     const props = block.state.getProperties();
-    console.log('Block:', id, JSON.stringify(props), JSON.stringify(block.pos));
     // Route vanilla blocks to the static renderer; keep Create blocks even if property-less (e.g., mechanical mixer).
     if (id.startsWith('minecraft:')) {
       continue;
@@ -329,6 +343,42 @@ export function buildRenderPlan (
       mesh.transform(scale);
       (mesh as ExtendedMesh).id = `${variant.model}_${variant.x ?? 0}_${variant.y ?? 0}`;
       uploadMesh(mesh);
+
+      // ─── 纹理引用日志 ───────────────────────────────────────
+      if (LOG_TEXTURES) {
+        const texMap = (blockModel as unknown as Record<string, Record<string, string>>)?.textures;
+        if (texMap) {
+          const faces = ['up', 'down', 'north', 'south', 'east', 'west'];
+          const refs = faces.filter(f => texMap[f]).map(f => `${f}:${texMap[f]}`);
+          if (refs.length) {
+            console.log(`%c${id} %c${variant.model} %c${refs.join('  ')}`, 'color:#8ae234;font-weight:bold', 'color:#888', 'color:#729fcf');
+          } else if (LOG_MODEL_REFS) {
+            console.log(`%c${id} %c${variant.model}`, 'color:#8ae234;font-weight:bold', 'color:#888');
+          }
+        } else if (LOG_MODEL_REFS) {
+          console.log(`%c${id} %c${variant.model}`, 'color:#8ae234;font-weight:bold', 'color:#888');
+        }
+      } else if (LOG_MODEL_REFS) {
+        console.log(`%c${id} %c${variant.model}`, 'color:#8ae234;font-weight:bold', 'color:#888');
+      }
+
+      // ─── UV 截取日志 ───────────────────────────────────────
+      if (LOG_UV && mesh.quads.length > 0) {
+        console.groupCollapsed(`%c${id} %c${variant.model}`, 'color:#8ae234;font-weight:bold', 'color:#888');
+        console.log('  quads:', mesh.quads.length, '  lines:', mesh.lines?.length ?? 0);
+        for (let i = 0; i < mesh.quads.length; i++) {
+          const q = mesh.quads[i]!;
+          const v1t = q.v1.texture;
+          const v3t = q.v3.texture;
+          const tl = q.v1.textureLimit;
+          const uvStr = v1t && v3t
+            ? `[${v1t[0].toFixed(1)},${v1t[1].toFixed(1)}]→[${v3t[0].toFixed(1)},${v3t[1].toFixed(1)}]`
+            : 'none';
+          const tlStr = tl ? `[${tl[0].toFixed(3)},${tl[1].toFixed(3)},${tl[2].toFixed(3)},${tl[3].toFixed(3)}]` : 'none';
+          console.log(`  quad[${i}] UV: ${uvStr}  texLimit: ${tlStr}`);
+        }
+        console.groupEnd();
+      }
 
       const motion = inferMotion(id, variant.model, props, variant);
       if (motion) {
@@ -461,7 +511,7 @@ export function buildRenderPlan (
             gearMesh.transform(scale);
             (gearMesh as ExtendedMesh).id = 'simulated:block/analog_transmission/gear';
             uploadMesh(gearMesh);
-            parts.push({ mesh: gearMesh, modelId: 'simulated:block/analog_transmission/gear', motion: { kind: 'spin', axis: axis as Axis, speed: 0.02 } });
+            parts.push({ mesh: gearMesh, modelId: 'simulated:block/analog_transmission/gear', motion: { kind: 'spin', axis: axis as Axis, speed: SPIN_SPEED } });
           }
         }
       }
@@ -471,6 +521,9 @@ export function buildRenderPlan (
     if (false && id.includes('propeller') && !id.includes('bearing') && props) { void 0; }
 
     if (parts.length > 0) {
+      if (LOG_MODEL_REFS) {
+        console.log('Block:', id, JSON.stringify(props), JSON.stringify(block.pos));
+      }
       plan.push({ blockId: id, pos: block.pos, parts });
       flywheelBlocks.add(id);
     }
@@ -491,12 +544,12 @@ function inferMotion (id: string, model: string, props: Record<string, string | 
     if (lowered.includes('diagonal')) {
       // Diagonal: direction by slope (downward=negative, upward=positive)
       const slope = props['slope'] as string | undefined;
-      return { kind: 'scroll', axis: 'y', speed: slope === 'downward' ? -0.01 : 0.01 };
+      return { kind: 'scroll', axis: 'y', speed: slope === 'downward' ? -DIAGONAL_BELT_SCROLL_SPEED : DIAGONAL_BELT_SCROLL_SPEED };
     }
     // Horizontal: UV+ moves opposite direction; north/east need negative speed
     const facing = props['facing'] as string | undefined;
     const flip = (facing === 'north' || facing === 'east') ? -1 : 1;
-    return { kind: 'scroll', axis: 'y', speed: 0.01 * flip };
+    return { kind: 'scroll', axis: 'y', speed: HORIZONTAL_BELT_SCROLL_SPEED * flip };
   }
 
   // Gearbox shafts: shaft_half geometry is along Z, use base='z' so variant rotation maps correctly
@@ -511,7 +564,7 @@ function inferMotion (id: string, model: string, props: Record<string, string | 
   }
 
   if (id.includes('mechanical_mixer') && modelName.includes('head')) {
-    return { kind: 'spin', axis: 'y', speed: 0.02 };
+    return { kind: 'spin', axis: 'y', speed: SPIN_SPEED };
   }
 
   // Ignore obvious casings/frames so only inner shafts/gears spin
@@ -545,13 +598,13 @@ function inferMotion (id: string, model: string, props: Record<string, string | 
   }
 
   if (spinTokens.some(k => modelName.includes(k))) {
-    let speed = 0.02;
+    let speed = SPIN_SPEED;
     if (lowered.includes('belt_pulley')) {
       // Horizontal/vertical: positive; diagonal (down/up): negative
       const slope = props['slope'] as string | undefined;
-      speed = (slope === 'downward' || slope === 'upward') ? -0.02 : 0.02;
+      speed = (slope === 'downward' || slope === 'upward') ? -SPIN_SPEED : SPIN_SPEED;
     } else if (id === 'create:creative_motor') {
-      speed = -0.02;
+      speed = -SPIN_SPEED;
     }
     return { kind: 'spin', axis, speed };
   }

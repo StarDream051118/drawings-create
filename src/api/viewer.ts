@@ -1,5 +1,4 @@
 import { glMatrix, mat4 } from 'gl-matrix';
-import { Identifier } from 'deepslate/core';
 import { Flywheel } from '../flywheel/flywheel';
 import { RotatingVisual } from '../flywheel/lib/visual/rotatingVisual';
 import { StaticVisual } from '../flywheel/lib/visual/staticVisual';
@@ -14,6 +13,12 @@ import type { Vertex } from 'deepslate/render';
 import { buildRenderPlan, type PlanBuilder } from './renderPlan.js';
 import { LimestoneObserver } from './events.js';
 import { ResourceProvider, FetchResourceProvider } from '../loader/resourceProvider.js';
+import { CameraController } from '../viewer/camera';
+import { drawCompass } from '../viewer/compass';
+import { loadBeltTextures } from '../viewer/textureLoader';
+
+/** Minecraft ticks per second = 50，每 tick 对应的秒数 */
+const SECONDS_PER_TICK = 1 / 50;
 
 export type { AddonProvider };
 export type Vec3 = [number, number, number];
@@ -154,62 +159,13 @@ export function createStructureViewer (options: ViewerOptions) {
     lastFrameTime: null
   };
 
-  // Easing targets — current values smoothly interpolate toward these
-  const target = {
-    yaw: 0,
-    pitch: 0,
-    distance: 48,
-    center: [8, 8, 8] as Vec3
-  };
-  let easingFrame = 0;
-
   const setStatus = (msg: string) => {
     observer.emit({ type: 'loading-progress', message: msg });
   };
 
-  const requestEasing = () => {
-    if (easingFrame) return;
-    const tick = () => {
-      const rate = 0.08;
-      const dy = target.yaw - state.yaw;
-      const dp = target.pitch - state.pitch;
-      const dd = target.distance - state.distance;
-      const dc0 = target.center[0] - state.center[0];
-      const dc1 = target.center[1] - state.center[1];
-      const dc2 = target.center[2] - state.center[2];
+  const camera = new CameraController(state, canvas, requestRender);
 
-      const done = Math.abs(dy) < 0.0005 && Math.abs(dp) < 0.0005 &&
-                   Math.abs(dd) < 0.01 && Math.abs(dc0) < 0.005 &&
-                   Math.abs(dc1) < 0.005 && Math.abs(dc2) < 0.005;
-      if (done) {
-        state.yaw = target.yaw;
-        state.pitch = target.pitch;
-        state.distance = target.distance;
-        state.center = [...target.center];
-        easingFrame = 0;
-        requestRender();
-        return;
-      }
-      state.yaw += dy * rate;
-      state.pitch += dp * rate;
-      state.distance += dd * rate;
-      state.center[0] += dc0 * rate;
-      state.center[1] += dc1 * rate;
-      state.center[2] += dc2 * rate;
-      requestRender();
-      easingFrame = requestAnimationFrame(tick);
-    };
-    easingFrame = requestAnimationFrame(tick);
-  };
-
-  const buildView = () => {
-    const view = mat4.create();
-    mat4.translate(view, view, [0, 0, -state.distance]);
-    mat4.rotateX(view, view, state.pitch);
-    mat4.rotateY(view, view, state.yaw);
-    mat4.translate(view, view, [-state.center[0], -state.center[1], -state.center[2]]);
-    return view;
-  };
+  const buildView = () => camera.buildView();
 
   const renderScene = () => {
     state.pendingFrame = 0;
@@ -237,7 +193,7 @@ export function createStructureViewer (options: ViewerOptions) {
     for (const v of state.visuals) {
       if (state.animateKinetics) {
         const radiansPerSecond = state.kineticRPM * 2 * Math.PI / 60;
-        v.update(delta * radiansPerSecond / 0.02);
+        v.update(delta * radiansPerSecond / SECONDS_PER_TICK);
       }
       v.beginFrame({ instancerProvider: () => state.flywheel!, partialTick: () => 0 });
     }
@@ -252,126 +208,24 @@ export function createStructureViewer (options: ViewerOptions) {
     }
   };
 
-  const requestRender = () => {
+  function requestRender () {
     if (state.pendingFrame) {
       return;
     }
     state.pendingFrame = requestAnimationFrame(renderScene);
-  };
-
-  const resize = () => {
-    const dpr = window.devicePixelRatio || 1;
-    const { clientWidth, clientHeight } = canvas;
-    canvas.width = clientWidth * dpr;
-    canvas.height = clientHeight * dpr;
-    state.renderer?.setViewport(0, 0, canvas.width, canvas.height);
-    requestRender();
-  };
+  }
 
   const resetCamera = (structure: Structure) => {
-    const size = structure.getSize();
-    target.center = [size[0] / 2, size[1] / 2, size[2] / 2];
-    target.distance = Math.max(12, Math.max(...size) * 1.5);
-    target.yaw = 0.45;
-    target.pitch = 0.45;
-    // Snap to origin then ease to target
-    state.yaw = 0;
-    state.pitch = 0;
-    state.center = [...target.center];
-    state.distance = target.distance;
-    requestEasing();
+    camera.resetCamera(structure.getSize());
   };
 
-  if (options.enableResize ?? true) {
-    window.addEventListener('resize', resize);
-  }
-
-  if (options.enableMouseControls ?? true) {
-    let dragging = false;
-    let lastX = 0;
-    let lastY = 0;
-
-    // Touch state for pinch-to-zoom
-    const pointers = new Map<number, { x: number; y: number }>();
-    let lastPinchDist = 0;
-
-    function getPinchDist (): number {
-      const pts = Array.from(pointers.values());
-      if (pts.length < 2) return 0;
-      const a = pts[0]!;
-      const b = pts[1]!;
-      const dx = a.x - b.x;
-      const dy = a.y - b.y;
-      return Math.sqrt(dx * dx + dy * dy);
-    }
-
-    canvas.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
-    canvas.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
-
-    canvas.addEventListener('pointerdown', e => {
-      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pointers.size === 1) {
-        dragging = true;
-        lastX = e.clientX;
-        lastY = e.clientY;
-      }
-      if (pointers.size === 2) {
-        dragging = false;
-        lastPinchDist = getPinchDist();
-      }
-      canvas.setPointerCapture(e.pointerId);
-    });
-
-    canvas.addEventListener('pointerup', e => {
-      pointers.delete(e.pointerId);
-      if (pointers.size < 2) {
-        lastPinchDist = 0;
-      }
-      if (pointers.size === 0) {
-        dragging = false;
-      }
-      canvas.releasePointerCapture(e.pointerId);
-    });
-
-    canvas.addEventListener('pointermove', e => {
-      const pt = pointers.get(e.pointerId);
-      if (!pt) return;
-      pt.x = e.clientX;
-      pt.y = e.clientY;
-
-      // Pinch-to-zoom (two fingers)
-      if (pointers.size === 2) {
-        const dist = getPinchDist();
-        if (lastPinchDist > 0) {
-          const scale = lastPinchDist / dist;
-          target.distance = Math.max(6, target.distance * scale);
-          requestEasing();
-        }
-        lastPinchDist = dist;
-        return;
-      }
-
-      // Single finger rotation
-      if (!dragging || pointers.size !== 1) return;
-      const dx = e.clientX - lastX;
-      const dy = e.clientY - lastY;
-      target.yaw += dx * 0.005;
-      target.pitch = Math.max(-1.4, Math.min(1.4, target.pitch + (dy * 0.005)));
-      lastX = e.clientX;
-      lastY = e.clientY;
-      requestEasing();
-    });
-
-    canvas.addEventListener('wheel', e => {
-      e.preventDefault();
-      target.distance = Math.max(2, target.distance * (1 + (e.deltaY * 0.001)));
-      requestEasing();
-    }, { passive: false });
-  }
+  // Attach camera controls (resize + mouse/touch)
+  camera.attachControls(options.enableResize ?? true, options.enableMouseControls ?? true);
 
   const loadStructure = async (input: File | ArrayBuffer) => {
     const isFile = input instanceof File;
     const name = isFile ? input.name : 'structure.nbt';
+    console.clear();
     setStatus(`加载 ${name}...`);
     try {
       const nbt = isFile ? await input.arrayBuffer() : input;
@@ -411,80 +265,19 @@ export function createStructureViewer (options: ViewerOptions) {
       state.flywheel = new Flywheel(gl);
       const atlasTexture = state.renderer.atlasTexture;
       if (atlasTexture && state.flywheel) {
+        // 修复 deepslate 未设置 TEXTURE_MIN_FILTER 导致的模糊
+        gl.bindTexture(gl.TEXTURE_2D, atlasTexture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST_MIPMAP_NEAREST);
         state.flywheel.setTexture(atlasTexture);
       }
 
-      try {
-        console.log('[belt] loading belt.png ...');
-        const beltImg = await assetsProvider.getTexture('textures/block/belt.png');
-        console.log('[belt] belt.png loaded:', beltImg?.width, '×', beltImg?.height);
-        const beltTex = gl.createTexture();
-        gl.bindTexture(gl.TEXTURE_2D, beltTex);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, beltImg);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-        state.flywheel.setBeltTexture(beltTex);
-        const beltUv = resourcesBundle.resources.getTextureUV(Identifier.parse('create:block/belt'));
-        console.log('[belt] atlas UV for create:block/belt:', beltUv);
-        if (beltUv) {
-          state.flywheel.setBeltTexLimit(beltUv[0], beltUv[1], beltUv[2], beltUv[3]);
-        }
-      } catch (e) {
-        console.warn('[belt] belt texture not found', e);
-      }
-
-      try {
-        console.log('[belt] loading belt_diagonal_scroll.png ...');
-        const beltDiagonalImg = await assetsProvider.getTexture('textures/block/belt_diagonal_scroll.png');
-        const w = beltDiagonalImg?.width ?? 0;
-        const h = beltDiagonalImg?.height ?? 0;
-        console.log('[belt] belt_diagonal_scroll.png loaded:', w, '×', h);
-        const beltDiagonalTex = gl.createTexture();
-        gl.bindTexture(gl.TEXTURE_2D, beltDiagonalTex);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, beltDiagonalImg);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-        state.flywheel.setBeltDiagonalTexture(beltDiagonalTex);
-        // 使用 create:block/belt_diagonal_scroll 在图集中的 UV 包围盒做归一化
-        // 顶点 UV 在图集空间，归一化得到 [0,1] 后采样独立加载的 belt_diagonal_scroll.png，完全脱离 atlas
-        const beltDiagonalUv = resourcesBundle.resources.getTextureUV(Identifier.parse('create:block/belt_diagonal_scroll'));
-        console.log('[belt] atlas UV for create:block/belt_diagonal_scroll:', beltDiagonalUv);
-        if (beltDiagonalUv) {
-          state.flywheel.setBeltDiagonalTexLimitBase(beltDiagonalUv[0], beltDiagonalUv[1], beltDiagonalUv[2], beltDiagonalUv[3]);
-          console.log('[belt] setBeltDiagonalUV(0, 0, 1, 1)');
-          state.flywheel.setBeltDiagonalUV(0, 0, 1, 1.5);
-        }
-        console.log('[belt] diagonal belt texture setup done');
-      } catch (e) {
-        console.warn('[belt] belt diagonal scroll texture not found', e);
-      }
-
-      try {
-        console.log('[belt] loading belt_offset.png ...');
-        const beltBottomImg = await assetsProvider.getTexture('textures/block/belt_offset.png');
-        console.log('[belt] belt_offset.png loaded:', beltBottomImg?.width, '×', beltBottomImg?.height);
-        const beltBottomTex = gl.createTexture();
-        gl.bindTexture(gl.TEXTURE_2D, beltBottomTex);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, beltBottomImg);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-        state.flywheel.setBeltBottomTexture(beltBottomTex);
-        const beltBottomUv = resourcesBundle.resources.getTextureUV(Identifier.parse('create:block/belt_offset'));
-        console.log('[belt] atlas UV for create:block/belt_offset:', beltBottomUv);
-        if (beltBottomUv) {
-          state.flywheel.setBeltBottomTexLimitBase(beltBottomUv[0], beltBottomUv[1], beltBottomUv[2], beltBottomUv[3]);
-          state.flywheel.setBeltBottomUV(0, 0, 1, 1);
-        }
-        console.log('[belt] bottom belt texture setup done');
-      } catch (e) {
-        console.warn('[belt] belt offset texture not found', e);
-      }
+      // Load belt textures
+      await loadBeltTextures(
+        gl,
+        assetsProvider,
+        id => resourcesBundle.resources.getTextureUV(id),
+        state.flywheel.beltManager
+      );
 
       state.visuals = [];
       for (const block of renderPlan.blocks) {
@@ -502,7 +295,7 @@ export function createStructureViewer (options: ViewerOptions) {
       state.structure = structure;
       resetCamera(structure);
       setStatus(`加载 ${name}`);
-      resize();
+      requestRender();
       observer.emit({ type: 'structure-loaded' });
     } catch (err) {
       console.error(err);
@@ -511,7 +304,6 @@ export function createStructureViewer (options: ViewerOptions) {
     }
   };
 
-  resize();
   requestRender();
 
   return {
@@ -538,81 +330,4 @@ export function createStructureViewer (options: ViewerOptions) {
       state.flywheel = null;
     }
   };
-}
-
-function drawCompass (yaw: number, pitch: number) {
-  const size = 90;
-  const dpr = window.devicePixelRatio || 1;
-
-  const compass = document.getElementById('compass-canvas') as HTMLCanvasElement | null;
-  let ctx: CanvasRenderingContext2D | null = null;
-  if (!compass) {
-    const c = document.createElement('canvas');
-    c.id = 'compass-canvas';
-    c.style.cssText = 'position:fixed;bottom:16px;right:16px;pointer-events:none;z-index:50';
-    document.body.appendChild(c);
-    ctx = c.getContext('2d');
-  } else {
-    ctx = compass.getContext('2d');
-  }
-  if (!ctx) return;
-
-  const el = compass || document.getElementById('compass-canvas')!;
-  (el as HTMLCanvasElement).width = size * dpr;
-  (el as HTMLCanvasElement).height = size * dpr;
-  (el as HTMLCanvasElement).style.width = size + 'px';
-  (el as HTMLCanvasElement).style.height = size + 'px';
-
-  ctx.clearRect(0, 0, size * dpr, size * dpr);
-  ctx.save();
-  ctx.scale(dpr, dpr);
-  ctx.translate(size / 2, size / 2);
-
-  // Background circle
-  ctx.beginPath();
-  ctx.arc(0, 0, size / 2 - 4, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(0,0,0,0.6)';
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  // Yaw needle (rotate to show which way is north)
-  ctx.rotate(-yaw);
-
-  const labels: [string, number, string][] = [
-    ['N', 0, '#ff4444'],
-    ['E', Math.PI / 2, '#aaa'],
-    ['S', Math.PI, '#fff'],
-    ['W', -Math.PI / 2, '#aaa'],
-  ];
-
-  ctx.font = 'bold 12px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-
-  for (const [label, angle, color] of labels) {
-    ctx.save();
-    ctx.rotate(angle);
-    ctx.translate(0, -(size / 2 - 14));
-    ctx.fillStyle = color;
-    ctx.fillText(label, 0, 0);
-    ctx.restore();
-  }
-
-  // Up / Down indicators (based on pitch)
-  ctx.rotate(yaw); // reset rotation
-  ctx.font = '10px sans-serif';
-  ctx.fillStyle = pitch > 0.5 ? '#88ff88' : '#666';
-  ctx.fillText('U', 0, -(size / 2 - 14) * 0.7);
-  ctx.fillStyle = pitch < -0.5 ? '#ff8888' : '#666';
-  ctx.fillText('D', 0, (size / 2 - 14) * 0.7);
-
-  // Center dot
-  ctx.beginPath();
-  ctx.arc(0, 0, 2, 0, Math.PI * 2);
-  ctx.fillStyle = '#fff';
-  ctx.fill();
-
-  ctx.restore();
 }
