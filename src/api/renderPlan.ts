@@ -17,7 +17,7 @@ export const SPIN_SPEED = 0.02;
 
 // ─── 日志开关（true 输出，false 静默）──────────────────────
 /** 方块模型引用日志：方块名 + variant 模型路径 */
-export const LOG_MODEL_REFS = true;
+export const LOG_MODEL_REFS = false;
 /** 方块模型 UV 截取日志：quad UV 坐标 + texLimit */
 export const LOG_UV = false;
 /** 方块纹理引用日志：各面引用的纹理 */
@@ -303,6 +303,12 @@ export function buildRenderPlan (
 
     const variants: VariantLike[] = def.getModelVariants(props) as VariantLike[];
 
+    // ─── 从 block entity NBT 读取 Casing 类型 ──────────────────
+    let isAnCasing = false;
+    if (props.casing === 'true' && block.nbt?.hasString('Casing') && block.nbt.getString('Casing') === 'ANDESITE') {
+      isAnCasing = true;
+    }
+
     for (const variant of variants) {
       if (!modelOrientationMatches(id, props, variant.model)) {
         continue;
@@ -317,8 +323,32 @@ export function buildRenderPlan (
         continue;
       }
 
+      // ─── ANDESITE 时临时替换 brass_belt_casing → andesite_belt_casing ─────
+      let savedTextures: string[] | null = null;
+      if (isAnCasing && variant.model.includes('belt_casing/')) {
+        const tex = blockModel.textures;
+        const keys = Object.keys(tex);
+        savedTextures = keys.map(k => tex[k]!);
+        for (const k of keys) {
+          if (tex[k]) {
+            tex[k] = tex[k]!
+              .replace('brass_belt_casing', 'andesite_belt_casing')
+              .replace('brass_casing', 'andesite_casing');
+          }
+        }
+      }
+
       const tint = getTint(id, props);
       const mesh = blockModel.getMesh(resources, {} as Cull, tint);
+
+      // ─── 恢复 brass 材质 ─────
+      if (savedTextures) {
+        const keys = Object.keys(blockModel.textures);
+        for (let i = 0; i < keys.length; i++) {
+          blockModel.textures[keys[i]!] = savedTextures[i]!;
+        }
+      }
+
       if (!mesh) {
         continue;
       }
@@ -346,15 +376,10 @@ export function buildRenderPlan (
 
       // ─── 纹理引用日志 ───────────────────────────────────────
       if (LOG_TEXTURES) {
-        const texMap = (blockModel as unknown as Record<string, Record<string, string>>)?.textures;
-        if (texMap) {
-          const faces = ['up', 'down', 'north', 'south', 'east', 'west'];
-          const refs = faces.filter(f => texMap[f]).map(f => `${f}:${texMap[f]}`);
-          if (refs.length) {
-            console.log(`%c${id} %c${variant.model} %c${refs.join('  ')}`, 'color:#8ae234;font-weight:bold', 'color:#888', 'color:#729fcf');
-          } else if (LOG_MODEL_REFS) {
-            console.log(`%c${id} %c${variant.model}`, 'color:#8ae234;font-weight:bold', 'color:#888');
-          }
+        const texMap = blockModel.textures;
+        if (texMap && Object.keys(texMap).length > 0) {
+          const refs = Object.entries(texMap).map(([k, v]) => `${k}:${v}`);
+          console.log(`%c${id} %c${variant.model} %c${refs.join('  ')}`, 'color:#8ae234;font-weight:bold', 'color:#888', 'color:#729fcf');
         } else if (LOG_MODEL_REFS) {
           console.log(`%c${id} %c${variant.model}`, 'color:#8ae234;font-weight:bold', 'color:#888');
         }

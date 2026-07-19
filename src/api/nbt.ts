@@ -40,6 +40,20 @@ function parseLitematic (root: InstanceType<typeof NbtFile>['root']): Structure 
   const palette = region.getList('BlockStatePalette', NbtType.Compound);
   const blockStates = region.getLongArray('BlockStates');
 
+  // 读取 TileEntities（block entity 数据）
+  let tileEntities: Map<string, InstanceType<typeof NbtFile>['root']> | null = null;
+  if (region.has('TileEntities')) {
+    tileEntities = new Map();
+    const tileEntList = region.getList('TileEntities', NbtType.Compound);
+    for (let i = 0; i < tileEntList.length; i++) {
+      const te = tileEntList.getCompound(i);
+      if (te.has('Pos')) {
+        const pos = te.getList('Pos');
+        tileEntities.set(`${pos.getNumber(0)},${pos.getNumber(1)},${pos.getNumber(2)}`, te);
+      }
+    }
+  }
+
   const paletteSize = palette.length;
   const bits = Math.max(2, Math.ceil(Math.log2(paletteSize)));
   const mask = (1n << BigInt(bits)) - 1n;
@@ -80,7 +94,7 @@ function parseLitematic (root: InstanceType<typeof NbtFile>['root']): Structure 
           properties[key] = props.getString(key);
         }
       }
-      result.addBlock([x, y, z], name, Object.keys(properties).length ? properties : undefined);
+      result.addBlock([x, y, z], name, Object.keys(properties).length ? properties : undefined, tileEntities?.get(`${x},${y},${z}`));
     }
 
     bitIndex += BigInt(bits);

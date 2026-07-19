@@ -104,7 +104,7 @@ export class CreateModLoader {
             }
             // Apply procedural patches to definitions first
             if (id === 'create:belt') {
-              this.patchBeltDefinition(defJson);
+              await this.patchBeltDefinition(defJson);
             } else if (id === 'create:encased_fluid_pipe') {
               this.patchEncasedPipeDefinition(defJson);
             } else if (id === 'create:fluid_pipe') {
@@ -570,7 +570,7 @@ export class CreateModLoader {
     }
   }
 
-  private patchBeltDefinition (def: RawBlockState) {
+  private async patchBeltDefinition (def: RawBlockState) {
     if (!def.variants) {
       return;
     }
@@ -729,6 +729,10 @@ export class CreateModLoader {
 
     delete def.variants;
     def.multipart = multipart;
+
+    // 确保 andesite 的 belt_casing 纹理被加载（供 Casing=ANDESITE 时替换材质使用）
+    await this.loadTexture('create:block/belt/andesite_belt_casing');
+    await this.loadTexture('create:block/andesite_casing');
   }
 
   private patchEncasedCogDefinition (def: RawBlockState, id: string) {
