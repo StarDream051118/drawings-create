@@ -10,12 +10,13 @@ interface BeltDef {
   texturePath: string
   textureId: string
   uvOverride?: [number, number, number, number]
+  scrollMult?: number
 }
 
 const BELT_DEFS: BeltDef[] = [
-  { name: 'top', texturePath: 'textures/block/belt.png', textureId: 'create:block/belt' },
-  { name: 'diagonal', texturePath: 'textures/block/belt_diagonal_scroll.png', textureId: 'create:block/belt_diagonal_scroll', uvOverride: [0, 0, 1, 1.5] },
-  { name: 'bottom', texturePath: 'textures/block/belt_offset.png', textureId: 'create:block/belt_offset', uvOverride: [0, 0, 1, 1] },
+  { name: 'top', texturePath: 'textures/block/belt_scroll.png', textureId: 'create:block/belt_scroll', uvOverride: [0, 0, 1, 2], scrollMult: 0.5 },
+  { name: 'diagonal', texturePath: 'textures/block/belt_diagonal_scroll.png', textureId: 'create:block/belt_diagonal_scroll', uvOverride: [0, 0, 1, 2], scrollMult: 3 / 8 },
+  { name: 'bottom', texturePath: 'textures/block/belt_offset.png', textureId: 'create:block/belt_offset', uvOverride: [0, 0, 1, 1], scrollMult: 1 },
 ];
 
 export async function loadBeltTextures (
@@ -41,7 +42,7 @@ export async function loadBeltTextures (
       const uv = getTextureUV(Identifier.parse(def.textureId));
       if (LOG_BELT_TEXTURES) console.log(`[belt] atlas UV for ${def.textureId}:`, uv);
       if (uv) {
-        beltManager.register(def.name, tex, [uv[0], uv[1], uv[2], uv[3]]);
+        beltManager.register(def.name, tex, [uv[0], uv[1], uv[2], uv[3]], def.scrollMult ?? 0.5);
       }
       if (def.uvOverride) {
         beltManager.setUV(def.name, ...def.uvOverride);

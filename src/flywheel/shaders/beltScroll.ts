@@ -38,9 +38,11 @@ export const fragmentSource = `
 
   uniform sampler2D beltSampler;
   uniform vec4 beltTexLimit;
+  uniform float beltScrollMult;
 
   void main(void) {
-    vec2 beltUV = (vTexCoord - beltTexLimit.xy) / (beltTexLimit.zw - beltTexLimit.xy) + vScrollOffset.xy;
+    vec2 beltUV = (vTexCoord - beltTexLimit.xy) / (beltTexLimit.zw - beltTexLimit.xy);
+    beltUV.y += vScrollOffset.y * beltScrollMult;
     vec4 texColor = texture2D(beltSampler, beltUV);
     if (texColor.a < 0.1) discard;
     gl_FragColor = vec4(texColor.xyz * vLighting, texColor.a);
@@ -55,9 +57,11 @@ export const fragmentSourceDiagonal = `
 
   uniform sampler2D beltDiagonalSampler;
   uniform vec4 beltDiagonalTexLimit;
+  uniform float beltDiagonalScrollMult;
 
   void main(void) {
-    vec2 beltUV = (vTexCoord - beltDiagonalTexLimit.xy) / (beltDiagonalTexLimit.zw - beltDiagonalTexLimit.xy) + vScrollOffset.xy;
+    vec2 beltUV = (vTexCoord - beltDiagonalTexLimit.xy) / (beltDiagonalTexLimit.zw - beltDiagonalTexLimit.xy);
+    beltUV.y += vScrollOffset.y * beltDiagonalScrollMult;
     vec4 texColor = texture2D(beltDiagonalSampler, beltUV);
     if (texColor.a < 0.1) discard;
     gl_FragColor = vec4(texColor.xyz * vLighting, texColor.a);

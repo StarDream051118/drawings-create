@@ -567,18 +567,25 @@ function inferMotion (id: string, model: string, props: Record<string, string | 
   const excludedBeltTokens = ['belt_casing', 'belt_funnel', 'belt_tunnel', 'particle'];
   if (beltScrollTokens.some(k => lowered.includes(k)) && !excludedBeltTokens.some(k => lowered.includes(k))) {
     if (lowered.includes('diagonal')) {
-      // Diagonal: direction by slope + facing
+      // Diagonal: direction logic from Create Mod BeltVisual.java §145-152
       const slope = props['slope'] as string | undefined;
       const facing = props['facing'] as string | undefined;
-      const slopeDir = slope === 'downward' ? -1 : 1;
-      // west/south 的 UV 方向与 east/north 相反
-      const facingFlip = (facing === 'west' || facing === 'south') ? -1 : 1;
-      return { kind: 'scroll', axis: 'y', speed: DIAGONAL_BELT_SCROLL_SPEED * slopeDir * facingFlip };
+      const upward = slope === 'upward';
+      const axisNeg = facing === 'north' || facing === 'west';
+      const alongZ = facing === 'north' || facing === 'south';
+      // Create Mod: (axisNeg ^ upward) ^ ((alongX && !diagonal) || (alongZ && diagonal))
+      // For diagonal: (axisNeg ^ upward) ^ alongZ
+      const flip = (axisNeg !== upward) !== alongZ;
+      return { kind: 'scroll', axis: 'y', speed: DIAGONAL_BELT_SCROLL_SPEED * (flip ? -1 : 1) };
     }
-    // Horizontal: UV+ moves opposite direction; north/east need negative speed
+    // Horizontal: direction logic from Create Mod BeltVisual.java §145-152
     const facing = props['facing'] as string | undefined;
-    const flip = (facing === 'north' || facing === 'east') ? -1 : 1;
-    return { kind: 'scroll', axis: 'y', speed: HORIZONTAL_BELT_SCROLL_SPEED * flip };
+    const upward = (props['slope'] as string) === 'upward';
+    const axisNeg = facing === 'north' || facing === 'west';
+    const alongX = facing === 'east' || facing === 'west';
+    // Create Mod: (axisNeg ^ upward) ^ alongX
+    const flip = (axisNeg !== upward) !== alongX;
+    return { kind: 'scroll', axis: 'y', speed: HORIZONTAL_BELT_SCROLL_SPEED * (flip ? -1 : 1) };
   }
 
   // Gearbox shafts: shaft_half geometry is along Z, use base='z' so variant rotation maps correctly

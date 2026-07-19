@@ -160,6 +160,9 @@ export class Flywheel implements InstancerProvider {
     const limitName = isDiagonal ? 'beltDiagonalTexLimit' : 'beltTexLimit';
     const locTL = gl.getUniformLocation(program, limitName);
     if (locTL && beltData) gl.uniform4f(locTL, beltData.texLimit[0], beltData.texLimit[1], beltData.texLimit[2], beltData.texLimit[3]);
+    const smName = isDiagonal ? 'beltDiagonalScrollMult' : 'beltScrollMult';
+    const locSM = gl.getUniformLocation(program, smName);
+    if (locSM && beltData) gl.uniform1f(locSM, beltData.scrollMult);
 
     const locVert = gl.getAttribLocation(program, 'vertPos');
     const locTex = gl.getAttribLocation(program, 'texCoord');
