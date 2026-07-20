@@ -9,7 +9,7 @@ import type { Mesh, Cull } from 'deepslate/render';
 import type { ExtendedMesh, VariantLike } from '../types/assets';
 
 /** 对角 Belt UV 滚动速度（每 tick） */
-export const DIAGONAL_BELT_SCROLL_SPEED = 0.004;
+export const DIAGONAL_BELT_SCROLL_SPEED = 0.008;
 /** 水平 Belt UV 滚动速度（每 tick） */
 export const HORIZONTAL_BELT_SCROLL_SPEED = 0.008;
 /** 齿轮/传动杆旋转速度（每 tick，弧度） */
