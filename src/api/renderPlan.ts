@@ -576,7 +576,7 @@ function inferMotion (id: string, model: string, props: Record<string, string | 
       // Create Mod: (axisNeg ^ upward) ^ ((alongX && !diagonal) || (alongZ && diagonal))
       // For diagonal: (axisNeg ^ upward) ^ alongZ
       const flip = (axisNeg !== upward) !== alongZ;
-      return { kind: 'scroll', axis: 'y', speed: DIAGONAL_BELT_SCROLL_SPEED * (flip ? -1 : 1) };
+      return { kind: 'scroll', axis: 'y', speed: -DIAGONAL_BELT_SCROLL_SPEED * (flip ? -1 : 1) };
     }
     // Horizontal: direction logic from Create Mod BeltVisual.java §145-152
     const facing = props['facing'] as string | undefined;
