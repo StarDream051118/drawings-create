@@ -14,9 +14,9 @@ interface BeltDef {
 }
 
 const BELT_DEFS: BeltDef[] = [
-  { name: 'top', texturePath: 'textures/block/belt_scroll.png', textureId: 'create:block/belt_scroll', uvOverride: [0, 0, 1, 2], scrollMult: 0.5 },
-  { name: 'diagonal', texturePath: 'textures/block/belt_diagonal_scroll.png', textureId: 'create:block/belt_diagonal_scroll', uvOverride: [0, 0, 1, 2], scrollMult: 3 / 8 },
-  { name: 'bottom', texturePath: 'textures/block/belt_offset.png', textureId: 'create:block/belt_offset', uvOverride: [0, 0, 1, 1], scrollMult: 1 },
+  { name: 'top', texturePath: 'textures/block/belt_scroll.png', textureId: 'create:block/belt_scroll', uvOverride: [0, 0, 1, 0.5], scrollMult: 0.5 },
+  { name: 'diagonal', texturePath: 'textures/block/belt_diagonal_scroll.png', textureId: 'create:block/belt_diagonal_scroll', uvOverride: [0, 0.5, 1, 1], scrollMult: 3 / 8 },
+  { name: 'bottom', texturePath: 'textures/block/belt_offset.png', textureId: 'create:block/belt_offset', uvOverride: [0, 0, 1, 1], scrollMult: 0 },
 ];
 
 export async function loadBeltTextures (

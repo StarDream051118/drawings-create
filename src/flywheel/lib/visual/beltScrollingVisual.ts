@@ -34,7 +34,7 @@ export class BeltScrollingVisual extends AbstractBlockEntityVisual implements Dy
 
   update (partialTick: number): void {
     this.scrollState += this.speed * partialTick;
-    this.scrollState %= 1.0;
+    this.scrollState = this.scrollState - Math.floor(this.scrollState);
     this.instance.scrollV = this.scrollState;
     this.instance.setChanged();
   }
