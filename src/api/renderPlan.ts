@@ -629,6 +629,10 @@ function inferMotion (id: string, model: string, props: Record<string, string | 
   if (nonSpinToolTokens.some(t => modelName.includes(t)) && !modelName.includes('shaft')) {
     return null;
   }
+  // barrel_shaft is static, not spinning
+  if (modelName === 'barrel_shaft') {
+    return null;
+  }
 
   if (spinTokens.some(k => modelName.includes(k))) {
     let speed = SPIN_SPEED;
@@ -638,7 +642,15 @@ function inferMotion (id: string, model: string, props: Record<string, string | 
       speed = (slope === 'downward' || slope === 'upward') ? -SPIN_SPEED : SPIN_SPEED;
     } else if (id === 'create:creative_motor') {
       speed = -SPIN_SPEED;
+    } else if (id === 'create:gearbox' && modelName.includes('shaft_half')) {
+      const opp = variant.y === 180 || variant.y === 270 || variant.x === 270;
+      speed = opp ? -SPIN_SPEED : SPIN_SPEED;
     } else if (id.includes('bearing') && (modelName.includes('shaft_half') || modelName.includes('ironcog'))) {
+      const facing = props['facing'] as string | undefined;
+      if (facing === 'east' || facing === 'south') {
+        speed = -SPIN_SPEED;
+      }
+    } else if (id.includes('portable_engine') && modelName.includes('shaft')) {
       const facing = props['facing'] as string | undefined;
       if (facing === 'east' || facing === 'south') {
         speed = -SPIN_SPEED;

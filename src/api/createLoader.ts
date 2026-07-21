@@ -132,6 +132,16 @@ export class CreateModLoader {
             this.patchBearingDefinition(defJson, id);
           }
 
+          // Portable engine: inject sub-models + shaft_half
+          if (id.includes('portable_engine')) {
+            this.patchPortableEngineDefinition(defJson);
+          }
+
+          // Directional gearshift: inject barrel + barrel_shaft
+          if (id.includes('directional_gearshift')) {
+            this.patchDirectionalGearshiftDefinition(defJson);
+          }
+
           // Inject propeller sub-model for aeronautics propeller blocks (same logic as encased gear)
           if (ns === 'aeronautics' && id.includes('propeller') && !id.includes('bearing')) {
             const blockName = id.split(':')[1]!;
@@ -204,6 +214,12 @@ export class CreateModLoader {
             }
             if (id.includes('swivel_bearing')) {
               await this.loadModelRecursive(`${ns}:block/swivel_bearing/ironcog`);
+            }
+            if (id.includes('portable_engine')) {
+              const base = `${ns}:block/portable_engine`;
+              for (const sub of ['exhaust_outlet_left', 'exhaust_outlet_right', 'exhaust_pipe_left', 'exhaust_pipe_right', 'hatch_bottom', 'hatch_top']) {
+                await this.loadModelRecursive(`${base}/${sub}`);
+              }
             }
           }
           if (ns === 'aeronautics') {
@@ -937,6 +953,50 @@ export class CreateModLoader {
     }
   }
 
+  private patchPortableEngineDefinition (def: RawBlockState) {
+    if (!def.multipart) {
+      def.multipart = [];
+    }
+    if (def.variants) {
+      for (const [key, variant] of Object.entries(def.variants)) {
+        const when: Record<string, string> = {};
+        key.split(',').forEach(pair => {
+          const [k, v] = pair.split('=');
+          if (k && v) when[k] = v;
+        });
+        const entries = Array.isArray(variant) ? variant : [variant];
+        for (const entry of entries) {
+          def.multipart.push({ apply: entry, when: Object.keys(when).length ? when : undefined });
+        }
+      }
+      delete def.variants;
+    }
+    const base = 'simulated:block/portable_engine';
+    const half = 'create:block/shaft_half';
+    const subModels = [
+      `${base}/exhaust_outlet_left`,
+      `${base}/exhaust_outlet_right`,
+      `${base}/exhaust_pipe_left`,
+      `${base}/exhaust_pipe_right`,
+      `${base}/hatch_bottom`,
+      `${base}/hatch_top`,
+    ];
+    const facingRotations: Record<string, { y?: number }> = {
+      north: { y: -180 },
+      east: { y: -90 },
+      south: { y: 0 },
+      west: { y: 90 },
+    };
+    for (const [facing, rot] of Object.entries(facingRotations)) {
+      def.multipart.push({ apply: { model: half, ...rot }, when: { facing } });
+    }
+    for (const sub of subModels) {
+      for (const [facing, rot] of Object.entries(facingRotations)) {
+        def.multipart.push({ apply: { model: sub, ...rot }, when: { facing } });
+      }
+    }
+  }
+
   private patchEncasedPipeDefinition (def: RawBlockState) {
     if (!def.multipart) {
       def.multipart = [];
@@ -963,6 +1023,30 @@ export class CreateModLoader {
         apply: { model: conn.model },
         when: conn.when
       });
+    }
+  }
+
+  private patchDirectionalGearshiftDefinition (def: RawBlockState) {
+    if (!def.multipart) return;
+    const base = 'simulated:block/directional_gearshift';
+    const facingRotations: Record<string, { x?: number; y?: number }> = {
+      north: { y: 180 },
+      east: { y: 270 },
+      south: {},
+      west: { y: 90 },
+      up: { x: 90 },
+      down: { x: 270 },
+    };
+    for (const [facing, rot] of Object.entries(facingRotations)) {
+      def.multipart.push({ apply: { model: `${base}/barrel`, ...rot }, when: { facing } });
+    }
+    // barrel_shaft 静态渲染，无旋转
+    for (const [facing] of Object.entries(facingRotations)) {
+      def.multipart.push({ apply: { model: `${base}/barrel_shaft` }, when: { facing } });
+    }
+    // barrel_shaft 对称面，旋转 180°
+    for (const [facing] of Object.entries(facingRotations)) {
+      def.multipart.push({ apply: { model: `${base}/barrel_shaft`, x: 180 }, when: { facing } });
     }
   }
 
