@@ -567,16 +567,12 @@ function inferMotion (id: string, model: string, props: Record<string, string | 
   const excludedBeltTokens = ['belt_casing', 'belt_funnel', 'belt_tunnel', 'particle'];
   if (beltScrollTokens.some(k => lowered.includes(k)) && !excludedBeltTokens.some(k => lowered.includes(k))) {
     if (lowered.includes('diagonal')) {
-      // Diagonal: direction logic from Create Mod BeltVisual.java §145-152
-      const slope = props['slope'] as string | undefined;
-      const facing = props['facing'] as string | undefined;
-      const upward = slope === 'upward';
-      const axisNeg = facing === 'north' || facing === 'west';
-      const alongZ = facing === 'north' || facing === 'south';
-      // Create Mod: (axisNeg ^ upward) ^ ((alongX && !diagonal) || (alongZ && diagonal))
-      // For diagonal: (axisNeg ^ upward) ^ alongZ
-      const flip = (axisNeg !== upward) !== alongZ;
-      return { kind: 'scroll', axis: 'y', speed: -DIAGONAL_BELT_SCROLL_SPEED * (flip ? -1 : 1) };
+      // Diagonal: speed direction ensures beltUV increases (frame 0 → frame 1)
+      const facing = props['facing'] as string;
+      const upward = (props['slope'] as string) === 'upward';
+      const facingFlip = facing === 'west' || facing === 'south' ? -1 : 1;
+      const slopeDir = upward ? 1 : -1;
+      return { kind: 'scroll', axis: 'y', speed: DIAGONAL_BELT_SCROLL_SPEED * slopeDir * facingFlip };
     }
     // Horizontal: direction logic from Create Mod BeltVisual.java §145-152
     const facing = props['facing'] as string | undefined;
