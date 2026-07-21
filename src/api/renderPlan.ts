@@ -620,7 +620,8 @@ function inferMotion (id: string, model: string, props: Record<string, string | 
     'pump/cog',
     'mechanical_crafter/gears',
     'mechanical_arm/cog',
-    'pulley'
+    'pulley',
+    'ironcog'
   ];
 
   // Exclude when model clearly refers to press/deployer/saw heads or poles
@@ -637,6 +638,11 @@ function inferMotion (id: string, model: string, props: Record<string, string | 
       speed = (slope === 'downward' || slope === 'upward') ? -SPIN_SPEED : SPIN_SPEED;
     } else if (id === 'create:creative_motor') {
       speed = -SPIN_SPEED;
+    } else if (id.includes('bearing') && modelName.includes('shaft_half')) {
+      const facing = props['facing'] as string | undefined;
+      if (facing === 'east' || facing === 'south') {
+        speed = -SPIN_SPEED;
+      }
     }
     return { kind: 'spin', axis, speed };
   }

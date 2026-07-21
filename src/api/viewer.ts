@@ -37,6 +37,7 @@ export type ViewerState = {
   animateKinetics: boolean;
   kineticRPM: number;
   lastFrameTime: number | null;
+  hoveredBlock: { blockId: string; pos: [number, number, number]; properties: Record<string, string> } | null;
 };
 
 export function uploadMeshBuffers (gl: WebGLRenderingContext, mesh: Mesh) {
@@ -156,7 +157,8 @@ export function createStructureViewer (options: ViewerOptions) {
     showGrid: true,
     animateKinetics: true,
     kineticRPM: 16,
-    lastFrameTime: null
+    lastFrameTime: null,
+    hoveredBlock: null
   };
 
   const setStatus = (msg: string) => {
@@ -165,7 +167,115 @@ export function createStructureViewer (options: ViewerOptions) {
 
   const camera = new CameraController(state, canvas, requestRender);
 
+  // ─── 悬浮 Tooltip ───────────────────────────────────────────
+  const tooltipEl = document.createElement('div');
+  tooltipEl.style.cssText = 'display:none;position:fixed;background:rgba(0,0,0,0.85);color:#eee;padding:6px 10px;border-radius:4px;font:13px/1.4 monospace;pointer-events:none;z-index:9999;max-width:400px;white-space:pre-wrap;';
+  document.body.appendChild(tooltipEl);
+
   const buildView = () => camera.buildView();
+
+  const raycast = (mouseX: number, mouseY: number) => {
+    if (!state.structure) return null;
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const nx = ((mouseX - rect.left) * dpr / canvas.width) * 2 - 1;
+    const ny = -(((mouseY - rect.top) * dpr / canvas.height) * 2 - 1);
+
+    const view = buildView();
+    const proj = mat4.create();
+    const aspect = (canvas.width || 1) / (canvas.height || 1);
+    mat4.perspective(proj, glMatrix.toRadian(70), aspect, 0.1, 500);
+
+    const invVP = mat4.create();
+    mat4.multiply(invVP, proj, view);
+    mat4.invert(invVP, invVP);
+
+    const near4 = [nx, ny, -1, 1] as number[];
+    const far4 = [nx, ny, 1, 1] as number[];
+    const pNear = [0, 0, 0, 0] as number[];
+    const pFar = [0, 0, 0, 0] as number[];
+    const invVPArr = Array.from(invVP) as number[];
+    vec4MulMat4(pNear, near4, invVPArr);
+    vec4MulMat4(pFar, far4, invVPArr);
+    const wNear = pNear[3]! || 1;
+    const wFar = pFar[3]! || 1;
+    const rayOrigin0 = pNear[0]! / wNear;
+    const rayOrigin1 = pNear[1]! / wNear;
+    const rayOrigin2 = pNear[2]! / wNear;
+    const rayOrigin: number[] = [rayOrigin0, rayOrigin1, rayOrigin2];
+    const dirX = pFar[0]! / wFar - rayOrigin0;
+    const dirY = pFar[1]! / wFar - rayOrigin1;
+    const dirZ = pFar[2]! / wFar - rayOrigin2;
+    const rayLen = Math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ) || 1;
+    const rayDir: number[] = [dirX / rayLen, dirY / rayLen, dirZ / rayLen];
+
+    let closest: { blockId: string; pos: [number, number, number]; properties: Record<string, string> } | null = null;
+    let minT = Infinity;
+
+    for (const block of state.structure.getBlocks()) {
+      const bx = block.pos[0]!, by = block.pos[1]!, bz = block.pos[2]!;
+      const t = rayAABB(rayOrigin, rayDir, bx, by, bz, bx + 1, by + 1, bz + 1);
+      if (t !== null && t < minT && t > 0) {
+        minT = t;
+        const props = block.state.getProperties() as Record<string, string>;
+        closest = { blockId: block.state.getName().toString(), pos: [bx, by, bz], properties: props };
+      }
+    }
+    return closest;
+  };
+
+  const rayAABB = (origin: number[], dir: number[], minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): number | null => {
+    let tmin = -Infinity;
+    let tmax = Infinity;
+    const mins = [minX, minY, minZ];
+    const maxs = [maxX, maxY, maxZ];
+    for (let i = 0; i < 3; i++) {
+      const o = origin[i]!;
+      const d = dir[i]!;
+      const bmin = mins[i]!;
+      const bmax = maxs[i]!;
+      if (d === 0) {
+        if (o < bmin || o > bmax) return null;
+      } else {
+        const invD = 1 / d;
+        const t1 = (bmin - o) * invD;
+        const t2 = (bmax - o) * invD;
+        const tNear = t1 < t2 ? t1 : t2;
+        const tFar = t1 < t2 ? t2 : t1;
+        if (tNear > tmin) tmin = tNear;
+        if (tFar < tmax) tmax = tFar;
+        if (tmin > tmax) return null;
+      }
+    }
+    return tmin;
+  };
+
+  const vec4MulMat4 = (out: number[], v: number[], m: number[]) => {
+    for (let i = 0; i < 4; i++) {
+      out[i] = m[i]! * v[0]! + m[4 + i]! * v[1]! + m[8 + i]! * v[2]! + m[12 + i]! * v[3]!;
+    }
+  };
+
+  canvas.addEventListener('mousemove', (e: MouseEvent) => {
+    if (!state.structure) return;
+    const hit = raycast(e.clientX, e.clientY);
+    state.hoveredBlock = hit;
+    if (hit) {
+      const propsStr = JSON.stringify(hit.properties);
+      tooltipEl.textContent = `Block: ${hit.blockId} ${propsStr} [${hit.pos[0]},${hit.pos[1]},${hit.pos[2]}]`;
+      tooltipEl.style.display = 'block';
+      tooltipEl.style.left = (e.clientX + 14) + 'px';
+      tooltipEl.style.top = (e.clientY + 14) + 'px';
+    } else {
+      tooltipEl.style.display = 'none';
+    }
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    tooltipEl.style.display = 'none';
+    state.hoveredBlock = null;
+  });
+  // ──────────────────────────────────────────────────────────────
 
   const renderScene = () => {
     state.pendingFrame = 0;

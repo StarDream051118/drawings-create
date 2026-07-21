@@ -127,6 +127,11 @@ export class CreateModLoader {
             }
           }
 
+          // Bearing blocks from any namespace: add shaft_half + top sub-model
+          if (id.includes('bearing')) {
+            this.patchBearingDefinition(defJson, id);
+          }
+
           // Inject propeller sub-model for aeronautics propeller blocks (same logic as encased gear)
           if (ns === 'aeronautics' && id.includes('propeller') && !id.includes('bearing')) {
             const blockName = id.split(':')[1]!;
@@ -197,6 +202,9 @@ export class CreateModLoader {
             if (id.includes('analog_transmission')) {
               await this.loadModelRecursive(`${ns}:block/analog_transmission/gear`);
             }
+            if (id.includes('swivel_bearing')) {
+              await this.loadModelRecursive(`${ns}:block/swivel_bearing/ironcog`);
+            }
           }
           if (ns === 'aeronautics') {
             if (id.includes('propeller') && !id.includes('bearing')) {
@@ -234,6 +242,15 @@ export class CreateModLoader {
       if (modelId.startsWith('create:block/fluid_pipe/')) {
         this.patchPipeCoreFaces(json);
         this.patchPipeModelLimbs(json, modelId);
+      }
+
+      // PATCH IRONCOG: move gear outward by 2 pixels
+      if (modelId.includes('swivel_bearing/ironcog') && json.elements) {
+        for (const el of json.elements) {
+          const elem = el as RawModelElement;
+          if (elem.from) elem.from[1] += 2;
+          if (elem.to) elem.to[1] += 2;
+        }
       }
 
       // We only care about create models here. Vanilla models are handled by the main app.
@@ -849,6 +866,75 @@ export class CreateModLoader {
     def.multipart.push({ apply: { model: half, y: 90 }, when: { facing: 'west' } });     // X+（对向）
     def.multipart.push({ apply: { model: half, x: 90 }, when: { facing: 'up' } });      // Y-（对向）
     def.multipart.push({ apply: { model: half, x: 270 }, when: { facing: 'down' } });    // Y+（对向）
+  }
+
+  private patchBearingDefinition (def: RawBlockState, id: string) {
+    if (!def.multipart) {
+      def.multipart = [];
+    }
+    if (def.variants) {
+      for (const [key, variant] of Object.entries(def.variants)) {
+        const when: Record<string, string> = {};
+        key.split(',').forEach(pair => {
+          const [k, v] = pair.split('=');
+          if (k && v) when[k] = v;
+        });
+        const entries = Array.isArray(variant) ? variant : [variant];
+        for (const entry of entries) {
+          def.multipart.push({ apply: entry, when: Object.keys(when).length ? when : undefined });
+        }
+      }
+      delete def.variants;
+    }
+    const half = 'create:block/shaft_half';
+    const hasFacing = def.multipart.some(p => p.when && 'facing' in p.when!);
+    const hasAxis = def.multipart.some(p => p.when && 'axis' in p.when!);
+    if (hasFacing) {
+      def.multipart.push({ apply: { model: half, x: 180 }, when: { facing: 'south' } });
+      def.multipart.push({ apply: { model: half }, when: { facing: 'north' } });
+      def.multipart.push({ apply: { model: half, y: 90 }, when: { facing: 'east' } });
+      def.multipart.push({ apply: { model: half, y: 270 }, when: { facing: 'west' } });
+      def.multipart.push({ apply: { model: half, x: -90 }, when: { facing: 'up' } });
+      def.multipart.push({ apply: { model: half, x: 90 }, when: { facing: 'down' } });
+      // 对侧 shaft_half
+      if (id.includes('swivel_bearing')) {
+        def.multipart.push({ apply: { model: half }, when: { facing: 'south' } });
+        def.multipart.push({ apply: { model: half, x: 180 }, when: { facing: 'north' } });
+        def.multipart.push({ apply: { model: half, y: 270 }, when: { facing: 'east' } });
+        def.multipart.push({ apply: { model: half, y: 90 }, when: { facing: 'west' } });
+        def.multipart.push({ apply: { model: half, x: 90 }, when: { facing: 'up' } });
+        def.multipart.push({ apply: { model: half, x: -90 }, when: { facing: 'down' } });
+      }
+    }
+    if (hasAxis) {
+      def.multipart.push({ apply: { model: half }, when: { axis: 'z' } });
+      def.multipart.push({ apply: { model: half }, when: { axis: 'z' } });
+      def.multipart.push({ apply: { model: half }, when: { axis: 'x' } });
+      def.multipart.push({ apply: { model: half }, when: { axis: 'x' } });
+      def.multipart.push({ apply: { model: half }, when: { axis: 'y' } });
+      def.multipart.push({ apply: { model: half }, when: { axis: 'y' } });
+    }
+    // Top sub-model: bearing plate, rotates with the shaft
+    let topModel: string | null = null;
+    if (id.includes('propeller_bearing') && !id.includes('gyroscopic')) {
+      topModel = 'aeronautics:block/propeller_bearing/bearing_plate';
+    } else if (id.includes('gyroscopic_propeller_bearing')) {
+      topModel = 'aeronautics:block/gyroscopic_propeller_bearing/metal_bearing_plate';
+    } else if (id.includes('swivel_bearing')) {
+      topModel = 'simulated:block/swivel_bearing/ironcog';
+    } else {
+      topModel = 'create:block/bearing/top';
+    }
+    if (topModel) {
+      if (hasFacing) {
+        def.multipart.push({ apply: { model: topModel, x: 90, y: 180 }, when: { facing: 'south' } });
+        def.multipart.push({ apply: { model: topModel, x: -90, y: 180 }, when: { facing: 'north' } });
+        def.multipart.push({ apply: { model: topModel, x: 90, y: 90 }, when: { facing: 'east' } });
+        def.multipart.push({ apply: { model: topModel, x: 90, y: -90 }, when: { facing: 'west' } });
+        def.multipart.push({ apply: { model: topModel }, when: { facing: 'up' } });
+        def.multipart.push({ apply: { model: topModel, x: 180 }, when: { facing: 'down' } });
+      }
+    }
   }
 
   private patchEncasedPipeDefinition (def: RawBlockState) {
