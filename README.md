@@ -44,7 +44,7 @@ pnpx schematicannon generate-assets -d ./assets
 ### 2. 启动开发服务器
 
 ```bash
-pnpm dev
+pnpm examples/minimal
 ```
 
 ### 3. 加载蓝图
