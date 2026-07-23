@@ -47,6 +47,7 @@ import { ModelMultiPartCondition } from 'src/api/deepslateExtensions';
 
 export interface ExtendedMesh extends Mesh {
   id?: string;
+  customId?: string;
   colorOnly?: boolean;
   colorAlpha?: number;
   lineWidth?: number;

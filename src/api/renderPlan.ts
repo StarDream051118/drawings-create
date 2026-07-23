@@ -17,7 +17,7 @@ export const SPIN_SPEED = 0.02;
 
 // ─── 日志开关（true 输出，false 静默）──────────────────────
 /** 方块模型引用日志：方块名 + variant 模型路径 */
-export const LOG_MODEL_REFS = true;
+export const LOG_MODEL_REFS = false;
 /** 方块模型 UV 截取日志：quad UV 坐标 + texLimit */
 export const LOG_UV = false;
 /** 方块纹理引用日志：各面引用的纹理 */
@@ -371,7 +371,7 @@ export function buildRenderPlan (
       const scale = mat4.create();
       mat4.scale(scale, scale, [0.0625, 0.0625, 0.0625]);
       mesh.transform(scale);
-      (mesh as ExtendedMesh).id = `${variant.model}_${variant.x ?? 0}_${variant.y ?? 0}`;
+      (mesh as ExtendedMesh).id = (mesh as ExtendedMesh).customId ?? `${variant.model}_${variant.x ?? 0}_${variant.y ?? 0}`;
       uploadMesh(mesh);
 
       // ─── 纹理引用日志 ───────────────────────────────────────
@@ -721,6 +721,22 @@ function resolveAxisFromVariant (variant: VariantLike, base: Axis = 'y'): Axis |
   return 'y';
 }
 
+// directional_gearshift barrel: 12 种 state 的额外旋转（度数），默认全 0
+const BARREL_EXTRA_ROT: Record<string, { x?: number; y?: number; z?: number }> = {
+  'true:north':  {},
+  'true:east':   { z: 90 },
+  'true:south':  {},
+  'true:west':   { z: 90 },
+  'true:up':     {},
+  'true:down':   {},
+  'false:north': { z: 90 },
+  'false:east':  { y: 90 },
+  'false:south': { z: 90 },
+  'false:west':  { y: 90 },
+  'false:up':    { y: 90 },
+  'false:down':  { y: 90 },
+};
+
 function applyCustomTransforms (
   blockId: string,
   model: string,
@@ -735,6 +751,34 @@ function applyCustomTransforms (
       mat4.rotateX(tilt, tilt, facing === 'up' ? -Math.PI / 2 : Math.PI / 2);
       mat4.translate(tilt, tilt, [-8, -8, -8]);
       mesh.transform(tilt);
+    }
+  }
+
+  // directional_gearshift barrel: 12 种 state 独立 XYZ 旋转
+  if (blockId.includes('directional_gearshift') && model.includes('barrel') && !model.includes('barrel_shaft')) {
+    const facing = props['facing'] as string | undefined;
+    const alongFirst = String(props['axis_along_first']);
+    if (facing && alongFirst) {
+      const key = `${alongFirst}:${facing}`;
+      const extra = BARREL_EXTRA_ROT[key];
+      if (extra && (extra.x || extra.y || extra.z)) {
+        const t = mat4.create();
+        mat4.translate(t, t, [8, 8, 8]);
+        if (extra.x) mat4.rotateX(t, t, glMatrix.toRadian(extra.x));
+        if (extra.y) mat4.rotateY(t, t, glMatrix.toRadian(extra.y));
+        if (extra.z) mat4.rotateZ(t, t, glMatrix.toRadian(extra.z));
+        mat4.translate(t, t, [-8, -8, -8]);
+        mesh.transform(t);
+        // 标记需要唯一 id，避免 instancer 合并不同旋转的 barrel
+        (mesh as ExtendedMesh).customId = `${model}_${key}`;
+        // 清除缓存 buffer，强制 uploadMesh 从新 quad 数据重建
+        mesh.posBuffer = undefined;
+        mesh.normalBuffer = undefined;
+        mesh.textureBuffer = undefined;
+        mesh.textureLimitBuffer = undefined;
+        mesh.colorBuffer = undefined;
+        mesh.indexBuffer = undefined;
+      }
     }
   }
 

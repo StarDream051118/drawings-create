@@ -1029,7 +1029,7 @@ export class CreateModLoader {
   private patchDirectionalGearshiftDefinition (def: RawBlockState) {
     if (!def.multipart) return;
     const base = 'simulated:block/directional_gearshift';
-    const facingRotations: Record<string, { x?: number; y?: number }> = {
+    const rotationsTrue: Record<string, { x?: number; y?: number }> = {
       north: { y: 180 },
       east: { y: 270 },
       south: {},
@@ -1037,15 +1037,26 @@ export class CreateModLoader {
       up: { x: 90 },
       down: { x: 270 },
     };
-    for (const [facing, rot] of Object.entries(facingRotations)) {
-      def.multipart.push({ apply: { model: `${base}/barrel`, ...rot }, when: { facing } });
+    const rotationsFalse: Record<string, { x?: number; y?: number }> = {
+      north: { y: 180 },
+      east: { y: 270 },
+      south: {},
+      west: { y: 90 },
+      up: { x: 90, y: 90 },
+      down: { x: 270, y: 90 },
+    };
+    // barrel: 12 种 state，不跟随主模型旋转，完全由 renderPlan BARREL_EXTRA_ROT 控制
+    for (const [facing] of Object.entries(rotationsTrue)) {
+      def.multipart.push({ apply: { model: `${base}/barrel` }, when: { axis_along_first: 'true', facing } });
     }
-    // barrel_shaft 静态渲染，无旋转
-    for (const [facing] of Object.entries(facingRotations)) {
+    for (const [facing] of Object.entries(rotationsFalse)) {
+      def.multipart.push({ apply: { model: `${base}/barrel` }, when: { axis_along_first: 'false', facing } });
+    }
+    // barrel_shaft: 6 种 facing（无旋转）+ 对称面 x:180
+    for (const [facing] of Object.entries(rotationsTrue)) {
       def.multipart.push({ apply: { model: `${base}/barrel_shaft` }, when: { facing } });
     }
-    // barrel_shaft 对称面，旋转 180°
-    for (const [facing] of Object.entries(facingRotations)) {
+    for (const [facing] of Object.entries(rotationsTrue)) {
       def.multipart.push({ apply: { model: `${base}/barrel_shaft`, x: 180 }, when: { facing } });
     }
   }
