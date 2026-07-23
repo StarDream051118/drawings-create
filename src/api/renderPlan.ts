@@ -591,6 +591,14 @@ function inferMotion (id: string, model: string, props: Record<string, string | 
   } else if (lowered.includes('belt_pulley')) {
     // Belt pulley: spin axis from variant (perpendicular to belt direction)
     axis = resolveAxisFromVariant(variant, 'y') ?? 'y';
+  } else if (id.includes('directional_gearshift') && modelName.includes('shaft')) {
+    // directional_gearshift shaft_half: 独立 spin 轴配置
+    const shaftSpinAxis: Record<string, Axis> = {
+      'true:north': 'x', 'true:south': 'x', 'true:up': 'x', 'true:down': 'x', 'true:east': 'y', 'true:west': 'y',
+      'false:north': 'y', 'false:south': 'y', 'false:east': 'z', 'false:west': 'z', 'false:up': 'z', 'false:down': 'z',
+    };
+    const fKey = `${String(props['axis_along_first'])}:${props['facing']}`;
+    axis = shaftSpinAxis[fKey] ?? 'y';
   } else {
     axis = resolveAxis(props) ?? resolveAxisFromVariant(variant) ?? 'y';
   }

@@ -1052,6 +1052,32 @@ export class CreateModLoader {
     for (const [facing] of Object.entries(rotationsFalse)) {
       def.multipart.push({ apply: { model: `${base}/barrel` }, when: { axis_along_first: 'false', facing } });
     }
+    // shaft_half: 12 种 state，根据 facing + axis_along_first 确定轴向
+    const half = 'create:block/shaft';
+    // axis_along_first=true: facing=north/south → shaft X, facing=east/west → shaft Y, facing=up/down → shaft Z(无旋转)
+    // axis_along_first=false: facing=north/south → shaft Y, facing=east/west → shaft Z(无旋转), facing=up/down → shaft X
+    const shaftRotTrue: Record<string, { x?: number; y?: number }> = {
+      north: { x: 90, y: 90 },
+      south: { x: 90, y: 90 },
+      east: { y: -90 },
+      west: { y: -90 },
+      up: { x: 90, y: 90 },
+      down: { x: 90, y: 90 },
+    };
+    const shaftRotFalse: Record<string, { x?: number; y?: number }> = {
+      north: { y: -90 },
+      south: { y: -90 },
+      east: { x: 90 },
+      west: { x: 90 },
+      up: { x: 90 },
+      down: { x: 90 },
+    };
+    for (const [facing, rot] of Object.entries(shaftRotTrue)) {
+      def.multipart.push({ apply: { model: half, ...rot }, when: { axis_along_first: 'true', facing } });
+    }
+    for (const [facing, rot] of Object.entries(shaftRotFalse)) {
+      def.multipart.push({ apply: { model: half, ...rot }, when: { axis_along_first: 'false', facing } });
+    }
     // barrel_shaft: 12 种 state，跟随主模型 facing 旋转 + 对称面
     // 4 种特殊状态有额外旋转：east+true x:90, west+true x:90, north+false y:90, south+false y:90
     const shaftExtraRot: Record<string, { x?: number; y?: number }> = {
