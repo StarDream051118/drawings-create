@@ -769,9 +769,7 @@ function applyCustomTransforms (
         if (extra.z) mat4.rotateZ(t, t, glMatrix.toRadian(extra.z));
         mat4.translate(t, t, [-8, -8, -8]);
         mesh.transform(t);
-        // 标记需要唯一 id，避免 instancer 合并不同旋转的 barrel
         (mesh as ExtendedMesh).customId = `${model}_${key}`;
-        // 清除缓存 buffer，强制 uploadMesh 从新 quad 数据重建
         mesh.posBuffer = undefined;
         mesh.normalBuffer = undefined;
         mesh.textureBuffer = undefined;

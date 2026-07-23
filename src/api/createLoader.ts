@@ -1052,12 +1052,52 @@ export class CreateModLoader {
     for (const [facing] of Object.entries(rotationsFalse)) {
       def.multipart.push({ apply: { model: `${base}/barrel` }, when: { axis_along_first: 'false', facing } });
     }
-    // barrel_shaft: 6 种 facing（无旋转）+ 对称面 x:180
-    for (const [facing] of Object.entries(rotationsTrue)) {
-      def.multipart.push({ apply: { model: `${base}/barrel_shaft` }, when: { facing } });
+    // barrel_shaft: 12 种 state，跟随主模型 facing 旋转 + 对称面
+    // 4 种特殊状态有额外旋转：east+true x:90, west+true x:90, north+false y:90, south+false y:90
+    const shaftExtraRot: Record<string, { x?: number; y?: number }> = {
+      'true:east': { x: 90, y: 90 },
+      'true:west': { x: 90, y: 90 },
+      'false:north': { x: 90, y: 90 },
+      'false:south': { x: 90, y: 90 },
+    };
+    const xFlipStates = new Set(['true:north', 'true:south', 'false:east', 'false:west']);
+    for (const [facing, rot] of Object.entries(rotationsTrue)) {
+      const extra = shaftExtraRot[`true:${facing}`];
+      const baseX = (rot.x ?? 0) + (extra?.x ?? 0);
+      const baseY = ((rot.y ?? 0) + (extra?.y ?? 0)) % 360;
+      const baseApply: { model: string; x?: number; y?: number } = { model: `${base}/barrel_shaft` };
+      if (baseX) baseApply.x = baseX;
+      if (baseY) baseApply.y = baseY;
+      def.multipart.push({ apply: baseApply, when: { axis_along_first: 'true', facing } });
+      const key = `true:${facing}`;
+      const symApply: { model: string; x?: number; y?: number } = { model: `${base}/barrel_shaft` };
+      if (xFlipStates.has(key)) {
+        symApply.x = baseX + 180;
+        if (baseY) symApply.y = baseY;
+      } else {
+        if (baseX) symApply.x = baseX;
+        symApply.y = (baseY + 180) % 360;
+      }
+      def.multipart.push({ apply: symApply, when: { axis_along_first: 'true', facing } });
     }
-    for (const [facing] of Object.entries(rotationsTrue)) {
-      def.multipart.push({ apply: { model: `${base}/barrel_shaft`, x: 180 }, when: { facing } });
+    for (const [facing, rot] of Object.entries(rotationsFalse)) {
+      const extra = shaftExtraRot[`false:${facing}`];
+      const baseX = (rot.x ?? 0) + (extra?.x ?? 0);
+      const baseY = ((rot.y ?? 0) + (extra?.y ?? 0)) % 360;
+      const baseApply: { model: string; x?: number; y?: number } = { model: `${base}/barrel_shaft` };
+      if (baseX) baseApply.x = baseX;
+      if (baseY) baseApply.y = baseY;
+      def.multipart.push({ apply: baseApply, when: { axis_along_first: 'false', facing } });
+      const key = `false:${facing}`;
+      const symApply: { model: string; x?: number; y?: number } = { model: `${base}/barrel_shaft` };
+      if (xFlipStates.has(key)) {
+        symApply.x = baseX + 180;
+        if (baseY) symApply.y = baseY;
+      } else {
+        if (baseX) symApply.x = baseX;
+        symApply.y = (baseY + 180) % 360;
+      }
+      def.multipart.push({ apply: symApply, when: { axis_along_first: 'false', facing } });
     }
   }
 
